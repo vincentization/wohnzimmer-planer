@@ -54,7 +54,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setBg);
 
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o });
 const MAT = {
-  wall: M(0xf2f0ea, { roughness: 0.95 }), floor: M(0xc9a77c, { roughness: 0.7 }), ctx: M(0xb9b4aa),
+  wall: M(0xf2f0ea, { roughness: 0.95 }), floor: M(0xa5714a, { roughness: 0.7 }), ctx: M(0xb9b4aa),
   glass: M(0xa9c6d6, { transparent: true, opacity: 0.2, roughness: 0.1, depthWrite: false }),
   kamin: M(0x8d8a84), schrank: M(0xe6e1d6),
   ofen: M(0xa39e95, { roughness: 1 }), ofenHood: M(0xb3aea5, { roughness: 1 }), fire: M(0x1c1a18, { roughness: 0.9 }), hearth: M(0x4a4744, { roughness: 0.5 }),
