@@ -26,6 +26,10 @@ const de = (v, d = 2) => v.toFixed(d).replace('.', ',');
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const $ = id => document.getElementById(id);
 const rect = (a, b, c, d) => [[a, b], [c, b], [c, d], [a, d]];
+// Alter Kaminzug sitzt zwischen den beiden Scan-Wänden
+const KAMIN = rect(ROOM.kamin[0], ROOM.kamin[1], SCAN_WALLS[1][0], ROOM.kamin[3]);
+const SCAN = SCAN_WALLS.map(([a, b, c, d]) => rect(a, b, c, d));
+const OPEN_H = { W: [0.81, 2.37], B: [0, 2.26], I: [0, 2.01] };   // Öffnungen: Brüstung, Sturz (W = Fenster, B = Balkontür, I = Innentür)
 
 // ---------------------------------------------------------------- Szene
 THREE.ColorManagement.legacyMode = false;
@@ -99,6 +103,8 @@ const MAT = {
   oak: M(0xb88a58, { roughness: 0.6 }), boucle: M(0x4b4743, { roughness: 1 }), leather: M(0x7a4e33, { roughness: 0.55 }),
   bronze: M(0x8d6b3f, { metalness: 0.6, roughness: 0.4 }), sofa: M(0x9a958c, { roughness: 1 }), sofa2: M(0x8a857c, { roughness: 1 }),
   side: M(0x3f3a35, { roughness: 0.6 }), rug: M(0xcfc6b5, { roughness: 1 }), plant: M(0x4e6b45), pot: M(0x6d6157),
+  plantL: M(0x6a8a50), snake: M(0x44603d, { roughness: 0.6 }), olive: M(0x8a9874, { roughness: 1 }), cactus: M(0x5a7a4c),
+  trunk: M(0x6a5644, { roughness: 1 }), soil: M(0x3a2e25, { roughness: 1 }), straw: M(0xb9a77e), plume: M(0xe3d8c2, { roughness: 1 }),
 };
 
 function shapeFrom(rings) {
@@ -138,26 +144,22 @@ function buildRoom() {
     roomG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), swMat));
   }
   ROOM.walls.forEach(p => roomG.add(extrude(p, 0, top, MAT.wall)));
-  // Öffnungen: Brüstung / Sturz / Glas (W = Fenster, B = Balkontür, I = Innentür)
+  // Öffnungen: Brüstung / Sturz / Glas
   for (const o of ROOM.openings) {
-    const ring = [o.poly];
-    const sill = o.kind === 'W' ? 0.81 : 0, head = o.kind === 'I' ? 2.01 : (o.kind === 'W' ? 2.37 : 2.26);
+    const ring = [o.poly], [sill, head] = OPEN_H[o.kind];
     if (sill > 0) roomG.add(extrude(ring, 0, Math.min(sill, top), MAT.wall));
     if (!cut) roomG.add(extrude(ring, head, H, MAT.wall));
     if (o.kind !== 'I') { const gl = extrude(ring, sill, Math.min(head, top), MAT.glass); gl.castShadow = false; roomG.add(gl); }
   }
-  // Alter Kaminzug sitzt zwischen den beiden Scan-Wänden
-  const [kx0, ky0, , ky1] = ROOM.kamin, kx1 = SCAN_WALLS[1][0];
-  const kamin = rect(kx0, ky0, kx1, ky1);
-  roomG.add(extrude([kamin], 0, top, MAT.kamin));
+  roomG.add(extrude([KAMIN], 0, top, MAT.kamin));
   // Gemauerter Eckkamin: Korpus bis 1,10 m, darüber schmalere Haube bis Decke
   roomG.add(extrude([OFEN.hearth], 0, 0.02, MAT.hearth));
   roomG.add(extrude([OFEN.body], 0, Math.min(1.10, top), MAT.ofen));
   if (top > 1.10) roomG.add(extrude([OFEN.hood], 1.10, top, MAT.ofenHood));
   roomG.add(extrude([OFEN.fire], 0.32, 0.92, MAT.fire));
-  const scan = SCAN_WALLS.map(([a, b, c, d]) => rect(a, b, c, d));
-  scan.forEach(r => roomG.add(extrude([r], 0, top, MAT.wall)));
-  wallParts = [...ROOM.walls.map(p => p[0]), kamin, OFEN.body, OFEN.hearth, ...scan];
+  SCAN.forEach(r => roomG.add(extrude([r], 0, top, MAT.wall)));
+  wallParts = [...ROOM.walls.map(p => p[0]), KAMIN, OFEN.body, OFEN.hearth, ...SCAN];
+  buildPaint(top, cut);
 }
 
 // ---------------------------------------------------------------- Möbel (lokal: x = Länge, z = Tiefe, Vorderseite -z)
@@ -170,6 +172,25 @@ function cyl(r, h, mat, x = 0, y = 0, z = 0, seg = 20) {
   m.position.set(x, y + h / 2, z); m.castShadow = true; return m;
 }
 const group = (...parts) => { const g = new THREE.Group(); parts.forEach(p => g.add(p)); return g; };
+// Pflanzen-Bausteine
+const SPH = new THREE.SphereGeometry(1, 14, 10), UP = new THREE.Vector3(0, 1, 0), FWD = new THREE.Vector3(0, 0, 1);
+const hr = k => { const v = Math.sin(k * 12.9898 + 4.1) * 43758.5453; return v - Math.floor(v); };   // feste Zufallszahl je k
+function ell(rx, ry, rz, mat, x, y, z) { const m = new THREE.Mesh(SPH, mat); m.scale.set(rx, ry, rz); m.position.set(x, y, z); m.castShadow = true; return m; }
+function stick(a, b, r, mat, seg = 6) {   // Zylinder von Punkt a nach Punkt b, oben etwas dünner
+  const A = new THREE.Vector3(...a), d = new THREE.Vector3(...b).sub(A);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r, d.length(), seg), mat);
+  m.position.copy(A).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(UP, d.normalize()); m.castShadow = true; return m;
+}
+function leaf(at, dir, len, wid, mat, th = 0.012) {   // flaches Ellipsoid, beginnt bei at und zeigt in Richtung dir
+  const d = new THREE.Vector3(...dir).normalize(), m = new THREE.Mesh(SPH, mat);
+  m.scale.set(wid / 2, th / 2, len / 2); m.position.set(...at).addScaledVector(d, len / 2);
+  m.quaternion.setFromUnitVectors(FWD, d); m.castShadow = true; return m;
+}
+function pot(r, h) {   // konischer Topf mit Erde
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.78, h, 24), MAT.pot);
+  m.position.y = h / 2; m.castShadow = m.receiveShadow = true;
+  return group(m, cyl(r * 0.93, 0.01, MAT.soil, 0, h - 0.03, 0, 24));
+}
 const BUILD = {
   // 2,00 × 0,90. Ausgezogen nur zu einer Seite (side = ±1): zwei Einlegeplatten à 0,40 → 2,80
   table(ext, side = 1) {
@@ -247,10 +268,84 @@ const BUILD = {
     for (const sx of [-lx, lx]) for (const sz of [-lz, lz]) g.add(bx(0.03, s.legs, 0.03, MAT.bronze, sx, 0, sz));
     return g;
   },
-  plant() {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), MAT.plant);
-    s.position.y = 0.85; s.scale.y = 1.3; s.castShadow = true;
-    return group(cyl(0.18, 0.35, MAT.pot), s);
+  plant(s) {   // Blätter im Goldenen Winkel verteilt, Streuung über hr(k) → jedes Exemplar sieht gleich aus
+    const g = new THREE.Group(), GA = 2.39996, cs = a => [Math.cos(a), Math.sin(a)];
+    switch (s.id) {
+      case 'monstera':
+        g.add(pot(0.2, 0.32));
+        for (let k = 0; k < 11; k++) {
+          const [c, n] = cs(k * GA), r = 0.06 + 0.12 * hr(k), tip = [c * r, 0.5 + 0.4 * hr(k + 20), n * r];
+          g.add(stick([c * 0.03, 0.3, n * 0.03], tip, 0.008, MAT.plantL));
+          g.add(leaf(tip, [c, -0.15 - 0.3 * hr(k + 40), n], 0.3, 0.26, MAT.plant));
+        }
+        break;
+      case 'ficus':   // Geigenfeige: Stamm, große Blätter im oberen Drittel
+        g.add(pot(0.2, 0.38), stick([0, 0.36, 0], [0.03, 1.55, 0.01], 0.025, MAT.trunk));
+        for (let k = 0; k < 26; k++) {
+          const [c, n] = cs(k * GA), y = 0.85 + 0.7 * k / 26;
+          g.add(leaf([0.03 * y / 1.55 + c * 0.02, y, n * 0.02], [c, 0.35 + 0.4 * hr(k + 9), n], 0.24, 0.17, MAT.plant));
+        }
+        break;
+      case 'strelitzia':   // Paradiesvogelblume: lange Stiele mit aufrechten Paddelblättern
+        g.add(pot(0.22, 0.4));
+        for (let k = 0; k < 9; k++) {
+          const [c, n] = cs(k * GA), out = 0.06 + 0.12 * hr(k), top = [c * out, 0.95 + 0.45 * hr(k + 3), n * out];
+          g.add(stick([c * 0.04, 0.38, n * 0.04], top, 0.01, MAT.plantL));
+          g.add(leaf(top, [c * 0.3, 1, n * 0.3], 0.45, 0.17, MAT.plant, 0.01));
+        }
+        break;
+      case 'palm':   // Kentiapalme: überhängende Wedel mit Fiederblättern
+        g.add(pot(0.22, 0.42));
+        for (let k = 0; k < 8; k++) {
+          const [c, n] = cs(k * Math.PI / 4 + 0.3 * hr(k)), h = 1.1 + 0.35 * hr(k + 5);
+          const p0 = [c * 0.03, 0.4, n * 0.03], p1 = [c * 0.15, h, n * 0.15], p2 = [c * 0.42, h - 0.18, n * 0.42];
+          g.add(stick(p0, p1, 0.01, MAT.plantL), stick(p1, p2, 0.007, MAT.plantL));
+          for (let j = 0; j < 6; j++) {
+            const t = (j + 0.5) / 6, at = p1.map((v, i) => v + (p2[i] - v) * t);
+            for (const sg of [-1, 1]) g.add(leaf(at, [-n * sg + c * 0.3, -0.5, c * sg + n * 0.3], 0.22 - 0.08 * t, 0.045, MAT.plant, 0.006));
+          }
+        }
+        break;
+      case 'olive':   // Olivenbaum im eckigen Kübel
+        g.add(bx(0.4, 0.4, 0.4, MAT.pot), bx(0.36, 0.01, 0.36, MAT.soil, 0, 0.385));
+        g.add(stick([0, 0.38, 0], [0.04, 0.95, 0.02], 0.035, MAT.trunk), stick([0.04, 0.95, 0.02], [-0.02, 1.3, 0.03], 0.028, MAT.trunk),
+          stick([0.04, 0.95, 0.02], [0.17, 1.32, -0.05], 0.018, MAT.trunk));
+        for (let k = 0; k < 13; k++) {
+          const [c, n] = cs(k * GA), r = 0.08 + 0.16 * hr(k), rr = 0.11 + 0.05 * hr(k + 3);
+          g.add(ell(rr, 0.08, rr, MAT.olive, c * r, 1.32 + 0.28 * hr(k + 7), n * r));
+        }
+        break;
+      case 'snake':   // Bogenhanf: steife, aufrechte Blätter
+        g.add(pot(0.15, 0.3));
+        for (let k = 0; k < 10; k++) {
+          const [c, n] = cs(k * GA), r = 0.02 + 0.06 * hr(k), tl = 0.1 + 0.12 * hr(k + 4);
+          g.add(leaf([c * r, 0.24, n * r], [c * tl, 1, n * tl], 0.5 + 0.4 * hr(k + 2), 0.07, MAT.snake, 0.01));
+        }
+        break;
+      case 'cactus': {   // Säulenkaktus mit zwei Armen
+        const C = MAT.cactus;
+        g.add(pot(0.16, 0.26), cyl(0.075, 1.0, C, 0, 0.24, 0, 12), ell(0.075, 0.075, 0.075, C, 0, 1.24, 0));
+        for (const [x, z, y, hh, r] of [[0.17, 0, 0.7, 0.3, 0.05], [-0.14, 0.03, 0.9, 0.2, 0.045]]) {
+          g.add(stick([0, y, 0], [x, y, z], r, C, 10), ell(r, r, r, C, x, y, z), cyl(r, hh, C, x, y, z, 10), ell(r, r, r, C, x, y + hh, z));
+        }
+        break;
+      }
+      case 'grass': {   // Pampasgras in hoher Bodenvase
+        const v = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.13, 0.55, 24), MAT.pot);
+        v.position.y = 0.275; v.castShadow = true; g.add(v);
+        for (let k = 0; k < 11; k++) {
+          const [c, n] = cs(k * GA), sp = 0.12 + 0.2 * hr(k), tip = [c * sp, 1.3 + 0.45 * hr(k + 1), n * sp];
+          g.add(stick([0, 0.5, 0], tip, 0.006, MAT.straw, 4), leaf(tip, [c * sp, tip[1] - 0.5, n * sp], 0.32, 0.08, MAT.plume, 0.06));
+        }
+        break;
+      }
+      default: {   // Busch
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), MAT.plant);
+        b.position.y = 0.85; b.scale.y = 1.3; b.castShadow = true;
+        g.add(cyl(0.18, 0.35, MAT.pot), b);
+      }
+    }
+    return g;
   },
 };
 // main: Material(ien), die die gewählte Farbe bekommen (weitere etwas dunkler)
@@ -287,7 +382,17 @@ const TYPES = {
     { id: 'organic', label: 'Organisch', w: 2.6, d: 1.8, shape: 'blob' },
   ] },
   shelf:     { name: 'Regal', w: 0.8, d: 0.35, main: ['schrank'] },
-  plant:     { name: 'Pflanze', w: 0.5, d: 0.5, main: ['pot'] },
+  plant:     { name: 'Pflanze', main: ['pot'], versions: [
+    { id: 'bush', label: 'Busch', w: 0.5, d: 0.5 },
+    { id: 'monstera', label: 'Monstera', w: 0.85, d: 0.85, shape: 'ellipse' },
+    { id: 'ficus', label: 'Geigenfeige', w: 0.55, d: 0.55, shape: 'ellipse' },
+    { id: 'strelitzia', label: 'Strelitzie', w: 0.6, d: 0.6, shape: 'ellipse' },
+    { id: 'palm', label: 'Kentiapalme', w: 1.1, d: 1.1, shape: 'ellipse' },
+    { id: 'olive', label: 'Olivenbaum', w: 0.65, d: 0.65, shape: 'ellipse' },
+    { id: 'snake', label: 'Bogenhanf', w: 0.35, d: 0.35, shape: 'ellipse' },
+    { id: 'cactus', label: 'Säulenkaktus', w: 0.45, d: 0.4, shape: 'ellipse' },
+    { id: 'grass', label: 'Pampasgras', w: 0.7, d: 0.7, shape: 'ellipse' },
+  ] },
   tv:        { name: 'TV an der Wand (42″)', w: 0.95, d: 0.06, soft: true, wall: true, main: ['side'] },
   lowboard:  { name: 'TV-Lowboard', wall: true, main: ['oak'], versions: [
     { id: 'std', label: 'Standard', w: 1.6, d: 0.4, h: 0.45, legs: 0.1, doors: 3 },
@@ -447,6 +552,90 @@ function issues(p) {
   return out;
 }
 
+// ---------------------------------------------------------------- Wandfarben
+// Jede raumseitige Wandfläche bekommt eine Farbschicht 3 mm vor der Wand. Flächen in derselben Flucht
+// (einschließlich Brüstung und Sturz der Öffnungen) bilden zusammen eine Wand, die man anklicken und einfärben kann.
+const WALL_PALETTE = [
+  { name: 'Standard', hex: '' }, { name: 'Altweiß', hex: '#ece6d8' }, { name: 'Greige', hex: '#cfc6b8' },
+  { name: 'Sand', hex: '#dccbad' }, { name: 'Hellgrau', hex: '#c8cac6' }, { name: 'Salbei', hex: '#a9b8a0' },
+  { name: 'Olivgrün', hex: '#7d8462' }, { name: 'Taubenblau', hex: '#8e9eab' }, { name: 'Petrol', hex: '#335b63' },
+  { name: 'Terrakotta', hex: '#c07a5a' }, { name: 'Ocker', hex: '#c9a25a' }, { name: 'Anthrazit', hex: '#4a4b4a' },
+];
+const area2 = poly => poly.reduce((s, [x, y], i) => { const [x2, y2] = poly[(i + 1) % poly.length]; return s + x * y2 - x2 * y; }, 0);
+const SOLIDS = [...ROOM.walls.map(p => p[0]), KAMIN, ...SCAN];
+const CHIMNEY_AREA = rect(4.8, 2.2, 5.5, 3.141);   // Aussparung im Boden am Kaminzug (Nische zwischen den Scan-Wänden)
+const inRoom = pt => (inPoly(pt, ROOM.floor[0][0]) || inPoly(pt, CHIMNEY_AREA)) && !SOLIDS.some(s => inPoly(pt, s));
+const WALLS = (() => {
+  // 1. Kanten aller Wand- und Öffnungs-Umrisse abtasten; sichtbar ist, was 3 cm davor im Raum liegt
+  const STEP = 0.025, OFF = 0.03, pcs = [];
+  const srcs = [...SOLIDS.map(poly => ({ poly, kind: 'S', chim: poly === KAMIN || SCAN.includes(poly) })), ...ROOM.openings.map(o => ({ poly: o.poly, kind: o.kind }))];
+  for (const { poly, kind, chim } of srcs) {
+    const sg = Math.sign(area2(poly));
+    for (const [a, b] of segsOf(poly)) {
+      const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); if (L < 0.02) continue;
+      const n = [sg * dy / L, -sg * dx / L], N = Math.max(1, Math.round(L / STEP)), at = t => [a[0] + dx * t, a[1] + dy * t];
+      let i0 = -1;
+      for (let i = 0; i <= N; i++) {
+        const q = at((i + 0.5) / N), ok = i < N && inRoom([q[0] + n[0] * OFF, q[1] + n[1] * OFF]);
+        if (ok && i0 < 0) i0 = i;
+        else if (!ok && i0 >= 0) { pcs.push({ a: at(i0 / N), b: at(i / N), n, kind, chim, off: n[0] * a[0] + n[1] * a[1] }); i0 = -1; }
+      }
+    }
+  }
+  // 2. Gleiche Richtung, gleiche Flucht (±2,5 cm) und lückenlos (±6 cm) → eine Wand
+  pcs.forEach(p => { const s = [p.a, p.b].map(q => -p.n[1] * q[0] + p.n[0] * q[1]); p.s0 = Math.min(...s); p.s1 = Math.max(...s); });
+  const root = pcs.map((_, i) => i), find = i => root[i] === i ? i : (root[i] = find(root[i]));
+  for (let i = 0; i < pcs.length; i++) for (let j = i + 1; j < pcs.length; j++) {
+    const p = pcs[i], q = pcs[j];
+    if (p.n[0] * q.n[0] + p.n[1] * q.n[1] > 0.999 && Math.abs(p.off - q.off) < 0.025 && p.s0 < q.s1 + 0.06 && q.s0 < p.s1 + 0.06) root[find(i)] = find(j);
+  }
+  const groups = new Map();
+  pcs.forEach((p, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(p); });
+  // 3. Name nach Himmelsrichtung (Plan: +x = Ost, +y = Nord); die Wand liegt entgegen der Raumnormalen
+  const DIR = ['Ost', 'Nordost', 'Nord', 'Nordwest', 'West', 'Südwest', 'Süd', 'Südost'];
+  const dirOf = v => DIR[((Math.round(Math.atan2(v[1], v[0]) / (Math.PI / 4)) % 8) + 8) % 8];
+  return [...groups.values()].map(ps => {
+    const solid = ps.filter(p => p.kind === 'S'), ref = solid[0] || ps[0], n = ref.n;
+    const s0 = Math.min(...ps.map(p => p.s0)), s1 = Math.max(...ps.map(p => p.s1));
+    const mx = ps.reduce((s, p) => s + p.a[0] + p.b[0], 0) / (2 * ps.length);
+    const name = solid.some(p => p.chim) ? `Kaminzug, ${dirOf(n)}seite` : `${dirOf([-n[0], -n[1]])}wand${mx < 0 ? ' (Erker)' : ''}`;
+    const key = `${Math.round(Math.atan2(n[1], n[0]) * 180 / Math.PI)}:${ref.off.toFixed(2)}:${s0.toFixed(1)}`;
+    return { key, name, len: s1 - s0, pieces: ps, mat: MAT.wall.clone(), mesh: null };
+  }).filter(w => w.len >= 0.03);
+})();
+const paintG = new THREE.Group(); scene.add(paintG);
+let wallColors = {};   // Wand-key → '#rrggbb'
+let selWall = null;    // key der gewählten Wand
+function buildPaint(top, cut) {
+  paintG.clear();
+  for (const w of WALLS) {
+    const pos = [];
+    for (const p of w.pieces) {
+      const [sill, head] = OPEN_H[p.kind] || [0, 0];
+      const spans = p.kind === 'S' ? [[0, top]] : [[0, Math.min(sill, top)], ...(cut ? [] : [[head, H]])];
+      const A = [p.a[0] + p.n[0] * 0.003, p.a[1] + p.n[1] * 0.003], B = [p.b[0] + p.n[0] * 0.003, p.b[1] + p.n[1] * 0.003];
+      const front = (B[1] - A[1]) * p.n[0] - (B[0] - A[0]) * p.n[1] > 0;   // Vorderseite zeigt in den Raum
+      for (const [h0, h1] of spans) {
+        if (h1 - h0 < 0.005) continue;
+        const a0 = [A[0], h0, -A[1]], b0 = [B[0], h0, -B[1]], b1 = [B[0], h1, -B[1]], a1 = [A[0], h1, -A[1]];
+        pos.push(...(front ? [a0, b0, b1, a0, b1, a1] : [a0, b1, b0, a0, a1, b1]).flat());
+      }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    w.mesh = new THREE.Mesh(g, w.mat); w.mesh.receiveShadow = true; w.mesh.userData.wall = w.key; paintG.add(w.mesh);
+  }
+}
+function paintWalls() {
+  for (const w of WALLS) {
+    w.mat.color.copy(wallColors[w.key] ? new THREE.Color(wallColors[w.key]) : MAT.wall.color);
+    w.mat.emissive.setHex(w.key === selWall ? 0xd08a3c : 0); w.mat.emissiveIntensity = 0.12;   // gewählte Wand leicht aufgehellt
+  }
+}
+function setWallColor(keys, hex) {
+  for (const k of keys) { if (hex) wallColors[k] = hex; else delete wallColors[k]; }
+  paintWalls(); markCustom();
+}
+
 // ---------------------------------------------------------------- Anzeige: Auswahl, Abstände, Hervorhebung
 const labelsEl = $('labels');
 const dimG = new THREE.Group(); scene.add(dimG);
@@ -494,7 +683,8 @@ function highlight() {
 }
 function renderSel() {
   const el = $('sel');
-  if (!selected) { el.innerHTML = '<p class="sel-empty">Ein Möbelstück anklicken, um es zu bewegen und Abstände zu sehen.</p>'; selBox.visible = false; return; }
+  if (!selected && selWall) { renderWallSel(el); selBox.visible = false; return; }
+  if (!selected) { el.innerHTML = '<p class="sel-empty">Ein Möbelstück anklicken, um es zu bewegen und Abstände zu sehen, oder eine Wand anklicken, um sie zu streichen.</p>'; selBox.visible = false; return; }
   const p = selected, t = spec(p);
   const w = p.type === 'table' && tableExt ? 2.8 : t.w;
   const iss = issues(p), minD = dims.length ? Math.min(...dims.map(x => x.val)) : null;
@@ -538,6 +728,27 @@ function renderSel() {
   if (p.type.startsWith('sofa')) $('flipSofa').onclick = () => { p.type = p.type === 'sofa' ? 'sofaR' : 'sofa'; rebuild(p); markCustom(); refresh(); };
   selBox.setFromObject(p.obj); selBox.visible = true;
 }
+function renderWallSel(el) {
+  const w = WALLS.find(x => x.key === selWall), cur = wallColors[w.key] || '', std = '#' + MAT.wall.color.getHexString();
+  const custom = cur && !WALL_PALETTE.some(c => c.hex === cur);
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><strong>${w.name}</strong>
+      <span class="num" style="color:var(--muted);font-size:12px">${de(w.len)} m</span></div>
+    <div class="opt"><span class="opt-l">Wandfarbe</span><div class="swatches">
+      ${WALL_PALETTE.map(c => `<button class="sw" data-wc="${c.hex}" title="${c.name}" aria-label="Wandfarbe ${c.name}" aria-pressed="${cur === c.hex}" style="background:${c.hex || std}"></button>`).join('')}
+      <label class="sw sw-custom${custom ? ' on' : ''}" title="Eigene Farbe"${custom ? ` style="background:${cur}"` : ''}><input type="color" id="wcPick" value="${cur || std}" aria-label="Eigene Wandfarbe"></label>
+    </div></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="wAll">Farbe für alle Wände</button>
+      <button class="btn" id="wReset">Alle zurücksetzen</button>
+    </div>`;
+  el.querySelectorAll('[data-wc]').forEach(b => b.onclick = () => { setWallColor([w.key], b.dataset.wc); renderSel(); });
+  const pick = $('wcPick');
+  pick.oninput = () => setWallColor([w.key], pick.value);   // live, ohne das Panel neu zu zeichnen (Farbwähler bleibt offen)
+  pick.onchange = () => renderSel();
+  $('wAll').onclick = () => { setWallColor(WALLS.map(x => x.key), cur); renderSel(); };
+  $('wReset').onclick = () => { wallColors = {}; paintWalls(); markCustom(); renderSel(); };
+}
 function refresh() { computeDims(selected); drawDims(); highlight(); renderSel(); renderVariants(); }
 
 // ---------------------------------------------------------------- Interaktion
@@ -557,7 +768,7 @@ canvas.addEventListener('pointerdown', e => {
   hits.sort((a, b) => (byUid(a.object.userData.uid).type === 'rug') - (byUid(b.object.userData.uid).type === 'rug'));
   if (!hits.length) { drag = null; downAt = [e.clientX, e.clientY]; return; }
   const p = byUid(hits[0].object.userData.uid), f = floorHit();
-  selected = p; controls.enabled = false;
+  selected = p; selWall = null; paintWalls(); controls.enabled = false;
   drag = { p, off: f ? [p.x - f.x, p.y + f.z] : [0, 0], partners: setPartners(p).map(q => ({ q, dx: q.x - p.x, dy: q.y - p.y })) };
   canvas.setPointerCapture(e.pointerId); refresh();
 });
@@ -570,9 +781,15 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('pointerup', e => {
   if (drag) { if (TYPES[drag.p.type].wall) snapToWall(drag.p); drag = null; controls.enabled = true; refresh(); }
-  else if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) { selected = null; refresh(); }
+  else if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) { ndcOf(e); selected = null; selWall = wallHit(); paintWalls(); refresh(); }
   downAt = null;
 });
+// Klick ohne Möbel: nächste Fläche im Raum; ist es eine Farbschicht, wird die Wand gewählt
+function wallHit() {
+  ray.setFromCamera(ndc, camera);
+  const h = ray.intersectObjects([...roomG.children.filter(o => o.isMesh), ...paintG.children], false)[0];
+  return (h && h.object.userData.wall) || null;
+}
 function rotateSel(deg) {
   if (!selected) return;
   const p = selected, partners = setPartners(p), a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
@@ -582,7 +799,8 @@ function rotateSel(deg) {
 }
 function delSel() { if (!selected) return; furnG.remove(selected.obj); pieces = pieces.filter(p => p !== selected); selected = null; markCustom(); refresh(); }
 window.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || !selected) return;
+  if (e.target.tagName === 'INPUT') return;
+  if (!selected) { if (e.key === 'Escape' && selWall) { selWall = null; paintWalls(); refresh(); } return; }
   const st = e.shiftKey ? 0.01 : 0.05;
   const mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
   if (e.key === 'r' || e.key === 'R') rotateSel(e.shiftKey ? 90 : -90);
@@ -656,7 +874,8 @@ function renderVariants() {
     }
     b.onclick = () => {
       // Voreinstellung übernimmt den aktuellen Auszugszustand, gespeicherte Varianten ihren eigenen
-      if (!v.preset) tableExt = !!v.ext;
+      if (!v.preset) { tableExt = !!v.ext; wallColors = { ...(v.walls || {}) }; }
+      selWall = null; paintWalls();
       loadItems(v.items);
       if (v.preset && tableExt) shiftEndChairs(0.8);
       activeVariant = v.id; refresh();
@@ -667,15 +886,28 @@ function renderVariants() {
 $('vsave').onclick = () => {
   const inp = $('vname'), id = 'S' + Date.now();
   saved.push({ id, name: inp.value.trim() || ('Variante ' + (saved.length + 1)),
-    note: new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }), items: snapshot(), ext: tableExt });
+    note: new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }), items: snapshot(), ext: tableExt, walls: { ...wallColors } });
   activeVariant = id; inp.value = '';
   $('vstore').textContent = persist() ? 'Gespeichert in diesem Browser.' : 'Speichern ist in diesem Browser gesperrt – die Variante gilt nur bis zum Neuladen.';
   renderVariants();
 };
 
-// ---------------------------------------------------------------- Hinzufügen
+// ---------------------------------------------------------------- Hinzufügen (Symbole, 24er-Raster, Strich)
+const ICON = {
+  tv: '<rect x="3" y="4.5" width="18" height="11.5" rx="1"/><path d="M8.5 19.5h7"/>',
+  lowboard: '<rect x="2.5" y="10" width="19" height="7" rx="1"/><path d="M8.8 10v7M15.2 10v7M5 17v2.5M19 17v2.5"/>',
+  chair: '<path d="M7.5 3v18M7.5 13h9.5v8"/>',
+  armchair: '<path d="M5.5 10.5V7a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v3.5"/><path d="M3 10.5h3.5v4h11v-4H21V18H3z"/><path d="M5 18v2M19 18v2"/>',
+  coffee: '<rect x="2.5" y="8" width="19" height="2.5" rx=".6"/><path d="M5 10.5V18M19 10.5V18M5 15h14"/>',
+  rug: '<rect x="4" y="5" width="16" height="14" rx="1"/><rect x="7.5" y="8.5" width="9" height="7" rx=".5"/><path d="M6 5V2.5M10 5V2.5M14 5V2.5M18 5V2.5M6 19v2.5M10 19v2.5M14 19v2.5M18 19v2.5"/>',
+  shelf: '<rect x="5" y="2.5" width="14" height="19" rx="1"/><path d="M5 9h14M5 15h14M8 9V5.5M10.5 9V6M14.5 15v-3.5M16.5 15v-3"/>',
+  plant: '<path d="M7 14.5h10l-1.4 7H8.4z"/><path d="M12 14.5V8"/><path d="M12 11.5c-3.5 0-5.5-2-5.5-5.5 3.5 0 5.5 2 5.5 5.5zM12 9.5c0-3.5 2-5.5 5.5-5.5 0 3.5-2 5.5-5.5 5.5z"/>',
+  sideboard: '<rect x="3" y="5.5" width="18" height="12" rx="1"/><path d="M12 5.5v12M10 11.5h.01M14 11.5h.01M5.5 17.5V20M18.5 17.5V20"/>',
+};
 for (const t of ADDABLE) {
-  const b = document.createElement('button'); b.className = 'btn'; b.textContent = '+ ' + TYPES[t].name;
+  const b = document.createElement('button'); b.className = 'btn ibtn';
+  b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t]}</svg>`;
+  b.title = TYPES[t].name; b.setAttribute('aria-label', TYPES[t].name + ' hinzufügen');
   b.onclick = () => {
     // Lowboard landet mittig unter einem vorhandenen TV, Teppich unter dem Couchtisch, sonst Wandmöbel an der Südwand, Rest frei im Raum
     const tv = t === 'lowboard' && pieces.find(q => q.type === 'tv');
@@ -684,7 +916,7 @@ for (const t of ADDABLE) {
     const p = addPiece({ type: t, ...at });
     p.fromSet = false;   // einzeln hinzugefügte Stühle gehören nicht zum Set
     if (TYPES[t].wall) snapToWall(p);
-    selected = p; markCustom(); refresh();
+    selected = p; selWall = null; paintWalls(); markCustom(); refresh();
   };
   $('addrow').appendChild(b);
 }
