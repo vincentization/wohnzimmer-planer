@@ -127,8 +127,8 @@ function bx(w, h, d, mat, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(x, y + h / 2, z); m.castShadow = m.receiveShadow = true; return m;
 }
-function cyl(r, h, mat, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), mat);
+function cyl(r, h, mat, x = 0, y = 0, z = 0, seg = 20) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat);
   m.position.set(x, y + h / 2, z); m.castShadow = true; return m;
 }
 const group = (...parts) => { const g = new THREE.Group(); parts.forEach(p => g.add(p)); return g; };
@@ -157,14 +157,20 @@ const BUILD = {
     return g;
   },
   // L-Ecksofa: langer Schenkel 2,94 × 1,00, kurzer Schenkel 1,00 breit, 2,20 lang ab Rückenkante (m = -1: gespiegelt)
-  sofa: (m = 1) => group(
+  sofa: (s, m = 1) => group(
     bx(2.94, 0.42, 1.0, MAT.sofa), bx(2.94, 0.38, 0.2, MAT.sofa2, 0, 0.42, 0.4),
     bx(1.0, 0.42, 1.2, MAT.sofa, 0.97 * m, 0, -1.1), bx(0.2, 0.38, 2.2, MAT.sofa2, 1.37 * m, 0.42, -0.6),
     bx(0.18, 0.2, 1.0, MAT.sofa2, -1.38 * m, 0.42, 0)),
-  sofaR: () => BUILD.sofa(-1),
-  coffee() {
-    const g = group(bx(1.05, 0.05, 0.6, MAT.oak, 0, 0.35), bx(0.95, 0.04, 0.5, MAT.oak, 0, 0.05));
-    for (const sx of [-0.48, 0.48]) for (const sz of [-0.25, 0.25]) g.add(bx(0.04, 0.35, 0.04, MAT.bronze, sx, 0, sz));
+  sofaR: () => BUILD.sofa(null, -1),
+  coffee(s) {
+    if (s.round) {   // runde Platte auf drei Beinen
+      const r = s.w / 2, g = group(cyl(r, 0.04, MAT.oak, 0, s.h - 0.04, 0, 48));
+      for (let k = 0; k < 3; k++) { const a = k * 2 * Math.PI / 3; g.add(cyl(0.02, s.h - 0.04, MAT.bronze, Math.cos(a) * r * 0.6, 0, Math.sin(a) * r * 0.6)); }
+      return g;
+    }
+    const g = group(bx(s.w, 0.05, s.d, MAT.oak, 0, s.h - 0.05), bx(s.w - 0.1, 0.04, s.d - 0.1, MAT.oak, 0, 0.05));   // Platte + Ablage
+    const lx = s.w / 2 - 0.045, lz = s.d / 2 - 0.05;
+    for (const sx of [-lx, lx]) for (const sz of [-lz, lz]) g.add(bx(0.04, s.h - 0.05, 0.04, MAT.bronze, sx, 0, sz));
     return g;
   },
   armchair: () => group(
@@ -176,10 +182,11 @@ const BUILD = {
     const sc = bx(0.93, 0.52, 0.004, MAT.fire, 0, 0.84, -0.007); sc.castShadow = false;
     return group(bx(0.95, 0.56, 0.035, MAT.side, 0, 0.82, 0.0125), sc, bx(0.3, 0.2, 0.025, MAT.bronze, 0, 1.0, 0.0175));
   },
-  lowboard() {   // TV-Lowboard 1,60 × 0,40, Korpus auf 10-cm-Füßen, drei Fronten, Rückseite lokal +z
-    const g = group(bx(1.6, 0.35, 0.4, MAT.oak, 0, 0.1));
-    for (const sx of [-0.8 / 3, 0.8 / 3]) g.add(bx(0.006, 0.33, 0.004, MAT.fire, sx, 0.11, -0.2));   // Fugen zwischen den Fronten
-    for (const sx of [-0.74, 0.74]) for (const sz of [-0.16, 0.16]) g.add(bx(0.03, 0.1, 0.03, MAT.bronze, sx, 0, sz));
+  lowboard(s) {   // Korpus auf Füßen, Fronten mit Fugen, Rückseite lokal +z
+    const body = s.h - s.legs, g = group(bx(s.w, body, s.d, MAT.oak, 0, s.legs));
+    for (let k = 1; k < s.doors; k++) g.add(bx(0.006, body - 0.02, 0.004, MAT.fire, -s.w / 2 + k * s.w / s.doors, s.legs + 0.01, -s.d / 2));
+    const lx = s.w / 2 - 0.06, lz = s.d / 2 - 0.04;
+    for (const sx of [-lx, lx]) for (const sz of [-lz, lz]) g.add(bx(0.03, s.legs, 0.03, MAT.bronze, sx, 0, sz));
     return g;
   },
   plant() {
@@ -188,21 +195,42 @@ const BUILD = {
     return group(cyl(0.18, 0.35, MAT.pot), s);
   },
 };
+// main: Material(ien), die die gewählte Farbe bekommen (weitere etwas dunkler)
+// versions: Ausführungen; ihre Felder (w, d, h, …) überschreiben die des Typs, die erste ist Standard
 const TYPES = {
-  table:     { name: 'Esstisch', w: 2.0, d: 0.9, set: true },
-  bench:     { name: 'Bank', w: 2.0, d: 0.55, set: true },
-  chair:     { name: 'Stuhl', w: 0.5, d: 0.55, set: true },
-  sideboard: { name: 'Sideboard', w: 2.33, d: 0.38 },
-  sofa:      { name: 'Ecksofa', w: 2.94, d: 1.0, foot: [[-1.47, -0.5, 1.47, 0.5], [0.47, -1.7, 1.47, -0.5]] },
-  sofaR:     { name: 'Ecksofa (gespiegelt)', w: 2.94, d: 1.0, foot: [[-1.47, -0.5, 1.47, 0.5], [-1.47, -1.7, -0.47, -0.5]] },
-  coffee:    { name: 'Couchtisch', w: 1.05, d: 0.6 },
-  armchair:  { name: 'Sessel', w: 0.8, d: 0.85 },
-  rug:       { name: 'Teppich', w: 3.0, d: 2.0, soft: true },
-  shelf:     { name: 'Regal', w: 0.8, d: 0.35 },
-  plant:     { name: 'Pflanze', w: 0.5, d: 0.5 },
-  tv:        { name: 'TV an der Wand (42″)', w: 0.95, d: 0.06, soft: true, wall: true },
-  lowboard:  { name: 'TV-Lowboard', w: 1.6, d: 0.4, wall: true },
+  table:     { name: 'Esstisch', w: 2.0, d: 0.9, set: true, main: ['oak'] },
+  bench:     { name: 'Bank', w: 2.0, d: 0.55, set: true, main: ['boucle'] },
+  chair:     { name: 'Stuhl', w: 0.5, d: 0.55, set: true, main: ['boucle'] },
+  sideboard: { name: 'Sideboard', w: 2.33, d: 0.38, main: ['side'] },
+  sofa:      { name: 'Ecksofa', w: 2.94, d: 1.0, main: ['sofa', 'sofa2'], foot: [[-1.47, -0.5, 1.47, 0.5], [0.47, -1.7, 1.47, -0.5]] },
+  sofaR:     { name: 'Ecksofa (gespiegelt)', w: 2.94, d: 1.0, main: ['sofa', 'sofa2'], foot: [[-1.47, -0.5, 1.47, 0.5], [-1.47, -1.7, -0.47, -0.5]] },
+  coffee:    { name: 'Couchtisch', main: ['oak'], versions: [
+    { id: 'rect', label: 'Rechteckig', w: 1.05, d: 0.6, h: 0.4 },
+    { id: 'square', label: 'Quadratisch', w: 0.8, d: 0.8, h: 0.38 },
+    { id: 'round', label: 'Rund', w: 0.9, d: 0.9, h: 0.38, round: true },
+  ] },
+  armchair:  { name: 'Sessel', w: 0.8, d: 0.85, main: ['sofa', 'sofa2'] },
+  rug:       { name: 'Teppich', w: 3.0, d: 2.0, soft: true, main: ['rug'] },
+  shelf:     { name: 'Regal', w: 0.8, d: 0.35, main: ['schrank'] },
+  plant:     { name: 'Pflanze', w: 0.5, d: 0.5, main: ['pot'] },
+  tv:        { name: 'TV an der Wand (42″)', w: 0.95, d: 0.06, soft: true, wall: true, main: ['side'] },
+  lowboard:  { name: 'TV-Lowboard', wall: true, main: ['oak'], versions: [
+    { id: 'std', label: 'Standard', w: 1.6, d: 0.4, h: 0.45, legs: 0.1, doors: 3 },
+    { id: 'slim', label: 'Schmal & hoch', w: 1.2, d: 0.25, h: 0.75, legs: 0.12, doors: 2 },
+    { id: 'deep', label: 'Tief & niedrig', w: 1.8, d: 0.55, h: 0.3, legs: 0.04, doors: 3 },
+  ] },
 };
+const PALETTE = [
+  { name: 'Standard', hex: '' }, { name: 'Eiche hell', hex: '#c8a273' }, { name: 'Nussbaum', hex: '#6e4b33' },
+  { name: 'Weiß', hex: '#eeebe4' }, { name: 'Sand', hex: '#d6c6a8' }, { name: 'Grau', hex: '#8f8d87' },
+  { name: 'Anthrazit', hex: '#3d3d3b' }, { name: 'Schwarz', hex: '#1e1d1c' }, { name: 'Salbei', hex: '#8da487' },
+  { name: 'Terrakotta', hex: '#b4623e' }, { name: 'Petrol', hex: '#2e5d64' }, { name: 'Senf', hex: '#c6993b' },
+];
+// Typ + gewählte Ausführung zusammengeführt
+function spec(p) {
+  const t = TYPES[p.type], v = t.versions && (t.versions.find(x => x.id === p.v) || t.versions[0]);
+  return v ? { ...t, ...v } : t;
+}
 const ADDABLE = ['tv', 'lowboard', 'chair', 'armchair', 'coffee', 'rug', 'shelf', 'plant', 'sideboard'];
 
 // ---------------------------------------------------------------- Varianten (rot in Grad gegen Uhrzeigersinn von oben)
@@ -232,14 +260,19 @@ let moveWithSet = true; // Tisch zieht Bank + Stühle mit
 // Auszugsrichtung: weg vom Erker (Westen) → die lokale Tischachse, die eher nach Osten zeigt
 const extSideOf = p => p.extSide || (Math.cos(p.rot * Math.PI / 180) >= -1e-6 ? 1 : -1);
 function makeObj(p) {
-  const o = p.type === 'table' ? BUILD.table(tableExt, extSideOf(p)) : BUILD[p.type]();
-  o.traverse(m => { m.userData.uid = p.uid; });
+  const s = spec(p);
+  const o = p.type === 'table' ? BUILD.table(tableExt, extSideOf(p)) : BUILD[p.type](s);
+  // Farbe: Hauptmaterial(ien) durch eingefärbte Kopie ersetzen
+  const tinted = new Map(p.color ? s.main.map((k, i) => {
+    const m = MAT[k].clone(); m.color.set(p.color); if (i) m.color.multiplyScalar(0.88); return [MAT[k], m];
+  }) : []);
+  o.traverse(m => { m.userData.uid = p.uid; if (tinted.has(m.material)) m.material = tinted.get(m.material); });
   return o;
 }
 function rebuild(p) { furnG.remove(p.obj); p.obj = makeObj(p); furnG.add(p.obj); place(p); }
 function place(p) { p.obj.position.copy(P2W(p.x, p.y)); p.obj.rotation.y = p.rot * Math.PI / 180; }
 function addPiece(d) {
-  const p = { uid: uidN++, type: d.type, x: d.x, y: d.y, rot: d.rot || 0, fromSet: !!TYPES[d.type].set, extSide: d.extSide };
+  const p = { uid: uidN++, type: d.type, x: d.x, y: d.y, rot: d.rot || 0, fromSet: !!TYPES[d.type].set, extSide: d.extSide, v: d.v, color: d.color };
   p.obj = makeObj(p); furnG.add(p.obj); pieces.push(p); place(p); return p;
 }
 function loadItems(items) { furnG.clear(); pieces = []; selected = null; items.forEach(addPiece); refresh(); }
@@ -266,16 +299,17 @@ function snapToWall(p) {
   let best = null;
   for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const t = rayDist([p.x, p.y], d); if (t < (best ? best.t : 3)) best = { t, d }; }
   if (!best) return;
-  const [dx, dy] = best.d, off = TYPES[p.type].d / 2 + 0.005;   // Mitte liegt halbe Tiefe vor der Wand
+  const [dx, dy] = best.d, off = spec(p).d / 2 + 0.005;   // Mitte liegt halbe Tiefe vor der Wand
   p.rot = Math.atan2(dx, -dy) * 180 / Math.PI;
   p.x += dx * (best.t - off); p.y += dy * (best.t - off); place(p);
 }
-const snapshot = () => pieces.map(({ type, x, y, rot, extSide }) =>
-  ({ type, x: +x.toFixed(3), y: +y.toFixed(3), rot: +rot.toFixed(1), ...(extSide ? { extSide } : {}) }));
+const snapshot = () => pieces.map(({ type, x, y, rot, extSide, v, color }) =>
+  ({ type, x: +x.toFixed(3), y: +y.toFixed(3), rot: +rot.toFixed(1), ...(extSide ? { extSide } : {}), ...(v ? { v } : {}), ...(color ? { color } : {}) }));
 
 // ---------------------------------------------------------------- Geometrie 2D (Plan)
 function footprint(p) {
-  const t = TYPES[p.type];
+  const t = spec(p);
+  if (t.round) { const r = t.w / 2; return [Array.from({ length: 20 }, (_, k) => [p.x + r * Math.cos(k * Math.PI / 10), p.y + r * Math.sin(k * Math.PI / 10)])]; }
   let rects = t.foot || [[-t.w / 2, -t.d / 2, t.w / 2, t.d / 2]];
   if (p.type === 'table' && tableExt) { const sd = extSideOf(p); rects = [[sd > 0 ? -1.0 : -1.8, -t.d / 2, sd > 0 ? 1.8 : 1.0, t.d / 2]]; }
   const c = Math.cos(p.rot * Math.PI / 180), s = Math.sin(p.rot * Math.PI / 180);
@@ -375,19 +409,24 @@ function highlight() {
 function renderSel() {
   const el = $('sel');
   if (!selected) { el.innerHTML = '<p class="sel-empty">Ein Möbelstück anklicken, um es zu bewegen und Abstände zu sehen.</p>'; selBox.visible = false; return; }
-  const p = selected, t = TYPES[p.type];
+  const p = selected, t = spec(p);
   const w = p.type === 'table' && tableExt ? 2.8 : t.w;
   const iss = issues(p), minD = dims.length ? Math.min(...dims.map(x => x.val)) : null;
+  const stdColor = '#' + MAT[t.main[0]].color.getHexString();
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><strong>${t.name}</strong>
-      <span class="num" style="color:var(--muted);font-size:12px">${de(w)} × ${de(t.d)} m</span></div>
+      <span class="num" style="color:var(--muted);font-size:12px">${t.round ? 'Ø ' + de(w) : de(w) + ' × ' + de(t.d)} m</span></div>
     <dl class="kv" style="margin:8px 0">
       <dt>Position</dt><dd class="num">${de(p.x)} / ${de(p.y)} m</dd>
       <dt>Drehung</dt><dd class="num">${Math.round(((p.rot % 360) + 360) % 360)}°</dd>
       ${minD !== null ? `<dt>Nächste Wand</dt><dd class="num">${de(minD)} m</dd>` : ''}
     </dl>
     ${iss.length ? `<p class="warn">⚠ ${iss.join(', ')}</p>` : '<p class="okc">Frei gestellt</p>'}
-    <div class="row" style="margin-top:8px">
+    ${t.versions ? `<div class="opt"><span class="opt-l">Ausführung</span><div class="row">
+      ${t.versions.map(v => `<button class="btn" data-v="${v.id}" aria-pressed="${v.id === t.id}">${v.label}</button>`).join('')}</div></div>` : ''}
+    <div class="opt"><span class="opt-l">Farbe</span><div class="swatches">
+      ${PALETTE.map(c => `<button class="sw" data-c="${c.hex}" title="${c.name}" aria-label="Farbe ${c.name}" aria-pressed="${(p.color || '') === c.hex}" style="background:${c.hex || stdColor}"></button>`).join('')}</div></div>
+    <div class="row" style="margin-top:12px">
       <button class="btn" data-r="90" title="90° gegen den Uhrzeigersinn">↺ 90°</button><button class="btn" data-r="-90" title="90° im Uhrzeigersinn">↻ 90°</button>
       ${p.type === 'table' ? `<button class="btn" id="extSel">${tableExt ? 'Zusammenschieben (2,00)' : 'Ausziehen (2,80)'}</button>
         <button class="btn" id="moveSet">Set mitnehmen: ${moveWithSet ? 'an' : 'aus'}</button>` : ''}
@@ -395,6 +434,9 @@ function renderSel() {
       <button class="btn" id="delSel">Entfernen</button>
     </div>`;
   el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => rotateSel(+b.dataset.r));
+  // Ausführung wechseln (Wandmöbel danach neu an die Wand setzen, weil sich die Tiefe ändert) / Farbe wählen
+  el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { p.v = b.dataset.v; rebuild(p); if (t.wall) snapToWall(p); markCustom(); refresh(); });
+  el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { p.color = b.dataset.c || undefined; rebuild(p); markCustom(); refresh(); });
   $('delSel').onclick = delSel;
   if (p.type === 'table') {
     $('extSel').onclick = () => setExt(!tableExt);
