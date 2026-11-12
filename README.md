@@ -9,6 +9,7 @@ Interaktiver 3D-Möbelplaner fürs Wohnzimmer im EG (Three.js, kein Build-Schrit
 - Wandabstände, Kollisionen und Balkontür-Aufschlag werden live geprüft
 - Esstisch ausziehbar (2,00 → 2,80 m), Ecksofa spiegelbar
 - Eigene Varianten werden im Browser gespeichert (localStorage)
+- Inspirations-Galerie als Vollbild-Lightbox: einfach Bilder in `inspiration/` legen und pushen (Dateien mit `fav` im Namen kommen zuerst). Die Bildliste kommt von der GitHub-API, lokal erscheinen neue Bilder also erst nach dem Push.
 
 ## Lokal starten
 
@@ -27,3 +28,5 @@ GitHub Pages, Quelle: Branch `main`, Ordner `/`. Jeder Push auf `main` ist autom
 - `index.html` – Markup
 - `style.css` – Layout und Farben (hell/dunkel)
 - `app.js` – Raumdaten, Möbel, Interaktion
+- `gallery.js` – Inspirations-Galerie (Lightbox)
+- `inspiration/` – Inspirationsbilder

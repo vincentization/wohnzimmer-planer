@@ -29,6 +29,12 @@
     </div>
 
     <section>
+      <h2>Inspiration</h2>
+      <button class="btn" id="galOpen">Galerie öffnen</button>
+      <p class="note" id="galStatus" aria-live="polite"></p>
+    </section>
+
+    <section>
       <h2>Varianten</h2>
       <div class="vlist" id="vlist"></div>
       <div class="row" style="margin-top:8px">
@@ -56,8 +62,17 @@
   </aside>
 </div>
 
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Inspiration" hidden>
+  <img id="lbImg" alt="Inspirationsbild">
+  <button class="lb-btn lb-close" id="lbClose" aria-label="Schließen">×</button>
+  <button class="lb-btn lb-prev" id="lbPrev" aria-label="Vorheriges Bild">‹</button>
+  <button class="lb-btn lb-next" id="lbNext" aria-label="Nächstes Bild">›</button>
+  <div class="lb-count num" id="lbCount"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
 <script src="app.js"></script>
+<script src="gallery.js"></script>
 </body>
 </html>
