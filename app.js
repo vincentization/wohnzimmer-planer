@@ -350,7 +350,8 @@ function rayDist(o, dir) {
 }
 function issues(p) {
   const out = [], fp = footprint(p).map(r => shrink(r, 0.01));
-  if (fp.some(r => wallParts.some(w => polyHit(r, w)))) out.push('steht in einer Wand');
+  const solid = p.type === 'rug' ? wallParts.filter(w => w !== OFEN.hearth) : wallParts;   // Teppich darf über die flache Ofenplatte ragen
+  if (fp.some(r => solid.some(w => polyHit(r, w)))) out.push('steht in einer Wand');
   if (TYPES[p.type].soft) return out;
   if (fp.some(r => polyHit(r, SWING))) out.push('im Aufschlag der Balkontür');
   for (const q of pieces) {
@@ -584,9 +585,10 @@ $('vsave').onclick = () => {
 for (const t of ADDABLE) {
   const b = document.createElement('button'); b.className = 'btn'; b.textContent = '+ ' + TYPES[t].name;
   b.onclick = () => {
-    // Lowboard landet mittig unter einem vorhandenen TV, sonst Wandmöbel an der Südwand, Rest frei im Raum
+    // Lowboard landet mittig unter einem vorhandenen TV, Teppich unter dem Couchtisch, sonst Wandmöbel an der Südwand, Rest frei im Raum
     const tv = t === 'lowboard' && pieces.find(q => q.type === 'tv');
-    const at = tv ? { x: tv.x, y: tv.y } : TYPES[t].wall ? { x: 7.95, y: 0.6 } : { x: 6.2, y: 1.6 };
+    const coffee = t === 'rug' && pieces.find(q => q.type === 'coffee');
+    const at = tv ? { x: tv.x, y: tv.y } : coffee ? { x: coffee.x, y: coffee.y, rot: coffee.rot } : TYPES[t].wall ? { x: 7.95, y: 0.6 } : { x: 6.2, y: 1.6 };
     const p = addPiece({ type: t, ...at });
     p.fromSet = false;   // einzeln hinzugefügte Stühle gehören nicht zum Set
     if (TYPES[t].wall) snapToWall(p);
