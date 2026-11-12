@@ -52,9 +52,47 @@ const setBg = () => { scene.background = new THREE.Color(css('--stage')); };
 setBg();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setBg);
 
+// Laminat wie im Foto: graubraune Eichendielen, 20 cm breit, 1,20 m lang, versetzt verlegt, Dielen laufen Richtung Erker (Plan-x).
+// Wird als Kachel von 2,40 × 1,60 m auf eine Canvas gemalt; der Boden hat UVs in Metern (Plan-Koordinaten).
+function floorTexture() {
+  const PX = 400, TW = 2.4, TH = 1.6, ROWS = 8, PL = 1.2;
+  const c = document.createElement('canvas'); c.width = TW * PX; c.height = TH * PX;
+  const g = c.getContext('2d'), rowH = c.height / ROWS, plankW = PL * PX;
+  const rng = s => () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const rnd = rng(11);
+  function plank(x0, y0, seed) {   // gleiche seed → identische Diele (für den nahtlosen Umbruch)
+    const r = rng(seed), l = 0.86 + r() * 0.28;
+    g.save(); g.beginPath(); g.rect(x0, y0, plankW, rowH); g.clip();
+    g.fillStyle = `rgb(${128 * l | 0},${96 * l | 0},${74 * l | 0})`; g.fillRect(x0, y0, plankW, rowH);
+    for (let i = 0; i < 30; i++) {   // Maserung: feine, leicht gewellte Längsstreifen
+      const y = y0 + r() * rowH, a = 0.05 + r() * 0.1, ph = r() * 6, amp = 1 + r() * 3;
+      g.strokeStyle = r() < 0.7 ? `rgba(45,30,20,${a})` : `rgba(235,210,180,${a * 0.6})`;
+      g.lineWidth = 0.6 + r() * 2.2;
+      g.beginPath();
+      for (let x = x0; x <= x0 + plankW + 24; x += 24) g.lineTo(x, y + Math.sin(x / 110 + ph) * amp);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(30,20,12,0.55)'; g.fillRect(x0, y0, 2, rowH);           // Stoßfuge
+    g.fillStyle = 'rgba(30,20,12,0.45)'; g.fillRect(x0, y0, plankW, 1.5);       // Längsfuge
+    g.fillStyle = 'rgba(255,240,220,0.08)'; g.fillRect(x0, y0 + 1.5, plankW, 1.5);   // leichte Fase
+    g.restore();
+  }
+  for (let row = 0; row < ROWS; row++) {
+    const y0 = row * rowH, off = rnd() * plankW;
+    for (let k = 0; k < 2; k++) {
+      const seed = 1000 + row * 10 + k, x0 = off + k * plankW;
+      plank(x0, y0, seed); plank(x0 - c.width, y0, seed);   // rechts überstehender Teil erscheint links wieder
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / TW, 1 / TH);
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o });
 const MAT = {
-  wall: M(0xf2f0ea, { roughness: 0.95 }), floor: M(0xa5714a, { roughness: 0.7 }), ctx: M(0xb9b4aa),
+  wall: M(0xf2f0ea, { roughness: 0.95 }), floor: M(0xffffff, { map: floorTexture(), roughness: 0.55 }), ctx: M(0xb9b4aa),
   glass: M(0xa9c6d6, { transparent: true, opacity: 0.2, roughness: 0.1, depthWrite: false }),
   kamin: M(0x8d8a84), schrank: M(0xe6e1d6),
   ofen: M(0xa39e95, { roughness: 1 }), ofenHood: M(0xb3aea5, { roughness: 1 }), fire: M(0x1c1a18, { roughness: 0.9 }), hearth: M(0x4a4744, { roughness: 0.5 }),
