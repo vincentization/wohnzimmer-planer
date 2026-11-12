@@ -176,6 +176,12 @@ const BUILD = {
     const sc = bx(0.93, 0.52, 0.004, MAT.fire, 0, 0.84, -0.007); sc.castShadow = false;
     return group(bx(0.95, 0.56, 0.035, MAT.side, 0, 0.82, 0.0125), sc, bx(0.3, 0.2, 0.025, MAT.bronze, 0, 1.0, 0.0175));
   },
+  lowboard() {   // TV-Lowboard 1,60 × 0,40, Korpus auf 10-cm-Füßen, drei Fronten, Rückseite lokal +z
+    const g = group(bx(1.6, 0.35, 0.4, MAT.oak, 0, 0.1));
+    for (const sx of [-0.8 / 3, 0.8 / 3]) g.add(bx(0.006, 0.33, 0.004, MAT.fire, sx, 0.11, -0.2));   // Fugen zwischen den Fronten
+    for (const sx of [-0.74, 0.74]) for (const sz of [-0.16, 0.16]) g.add(bx(0.03, 0.1, 0.03, MAT.bronze, sx, 0, sz));
+    return g;
+  },
   plant() {
     const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), MAT.plant);
     s.position.y = 0.85; s.scale.y = 1.3; s.castShadow = true;
@@ -195,8 +201,9 @@ const TYPES = {
   shelf:     { name: 'Regal', w: 0.8, d: 0.35 },
   plant:     { name: 'Pflanze', w: 0.5, d: 0.5 },
   tv:        { name: 'TV an der Wand (42″)', w: 0.95, d: 0.06, soft: true, wall: true },
+  lowboard:  { name: 'TV-Lowboard', w: 1.6, d: 0.4, wall: true },
 };
-const ADDABLE = ['tv', 'chair', 'armchair', 'coffee', 'rug', 'shelf', 'plant', 'sideboard'];
+const ADDABLE = ['tv', 'lowboard', 'chair', 'armchair', 'coffee', 'rug', 'shelf', 'plant', 'sideboard'];
 
 // ---------------------------------------------------------------- Varianten (rot in Grad gegen Uhrzeigersinn von oben)
 function setAt(x, y, rot) {   // Tisch mit Bank (Süd) und 5 Stühlen um Tischmitte
@@ -254,14 +261,14 @@ function setExt(on) {
   shiftEndChairs(on ? 0.8 : -0.8);
   markCustom(); refresh();
 }
-// Wandgeräte (TV): an die nächste Wand setzen, Rückseite zur Wand
+// Wandmöbel (TV, Lowboard): an die nächste Wand setzen, Rückseite zur Wand
 function snapToWall(p) {
   let best = null;
   for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const t = rayDist([p.x, p.y], d); if (t < (best ? best.t : 3)) best = { t, d }; }
   if (!best) return;
-  const [dx, dy] = best.d;
+  const [dx, dy] = best.d, off = TYPES[p.type].d / 2 + 0.005;   // Mitte liegt halbe Tiefe vor der Wand
   p.rot = Math.atan2(dx, -dy) * 180 / Math.PI;
-  p.x += dx * (best.t - 0.035); p.y += dy * (best.t - 0.035); place(p);
+  p.x += dx * (best.t - off); p.y += dy * (best.t - off); place(p);
 }
 const snapshot = () => pieces.map(({ type, x, y, rot, extSide }) =>
   ({ type, x: +x.toFixed(3), y: +y.toFixed(3), rot: +rot.toFixed(1), ...(extSide ? { extSide } : {}) }));
@@ -535,7 +542,10 @@ $('vsave').onclick = () => {
 for (const t of ADDABLE) {
   const b = document.createElement('button'); b.className = 'btn'; b.textContent = '+ ' + TYPES[t].name;
   b.onclick = () => {
-    const p = addPiece(t === 'tv' ? { type: t, x: 7.95, y: 0.6 } : { type: t, x: 6.2, y: 1.6 });
+    // Lowboard landet mittig unter einem vorhandenen TV, sonst Wandmöbel an der Südwand, Rest frei im Raum
+    const tv = t === 'lowboard' && pieces.find(q => q.type === 'tv');
+    const at = tv ? { x: tv.x, y: tv.y } : TYPES[t].wall ? { x: 7.95, y: 0.6 } : { x: 6.2, y: 1.6 };
+    const p = addPiece({ type: t, ...at });
     p.fromSet = false;   // einzeln hinzugefügte Stühle gehören nicht zum Set
     if (TYPES[t].wall) snapToWall(p);
     selected = p; markCustom(); refresh();
