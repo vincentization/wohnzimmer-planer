@@ -189,9 +189,22 @@ const BUILD = {
   chair: () => group(   // Lehne auf +z
     bx(0.5, 0.08, 0.48, MAT.boucle, 0, 0.39, -0.02), bx(0.5, 0.42, 0.06, MAT.leather, 0, 0.47, 0.22),
     cyl(0.03, 0.39, MAT.bronze), bx(0.5, 0.025, 0.05, MAT.bronze), bx(0.05, 0.025, 0.5, MAT.bronze)),
-  sideboard() {
-    const g = group(bx(2.33, 0.72, 0.38, MAT.side, 0, 0.12));
-    for (const sx of [-1.05, 1.05]) for (const sz of [-0.14, 0.14]) g.add(bx(0.03, 0.12, 0.03, MAT.bronze, sx, 0, sz));
+  // Korpus aus Platten mit Fächern; fronts: je Fach 'C' = Tür (geschlossen) oder 'O' = offen mit Einlegeböden. Rückseite lokal +z
+  sideboard(s) {
+    const T = 0.02, H = s.h - s.legs, y0 = s.legs, n = s.fronts.length, cw = (s.w - T) / n, front = -s.d / 2;
+    const xAt = k => -s.w / 2 + T / 2 + k * cw;   // Mitte der k-ten senkrechten Platte
+    const g = group(bx(s.w, T, s.d, MAT.side, 0, y0), bx(s.w, T, s.d, MAT.side, 0, y0 + H - T), bx(s.w, H, T, MAT.side, 0, y0, s.d / 2 - T / 2));
+    for (let k = 0; k <= n; k++) g.add(bx(T, H, s.d, MAT.side, xAt(k), y0));   // Seiten + Trennwände
+    for (let k = 0; k < n; k++) {
+      const cx = xAt(k + 0.5);
+      if (s.fronts[k] === 'C') {
+        g.add(bx(cw - T, H - 2 * T, T, MAT.side, cx, y0 + T, front + T / 2));   // Tür
+        g.add(bx(0.004, H - 0.02, 0.004, MAT.fire, xAt(k) + T / 2 + 0.002, y0 + 0.01, front));   // Fugen links/rechts
+        g.add(bx(0.004, H - 0.02, 0.004, MAT.fire, xAt(k + 1) - T / 2 - 0.002, y0 + 0.01, front));
+      } else for (let j = 1; j <= s.shelves; j++) g.add(bx(cw - T, T, s.d - T, MAT.side, cx, y0 + j * H / (s.shelves + 1) - T / 2, -T / 2));
+    }
+    const lx = s.w / 2 - 0.06, lz = s.d / 2 - 0.05;
+    if (s.legs > 0.02) for (const sx of [-lx, lx]) for (const sz of [-lz, lz]) g.add(bx(0.03, s.legs, 0.03, MAT.bronze, sx, 0, sz));
     return g;
   },
   // L-Ecksofa: langer Schenkel 2,94 × 1,00, kurzer Schenkel 1,00 breit, 2,20 lang ab Rückenkante (m = -1: gespiegelt)
@@ -201,7 +214,7 @@ const BUILD = {
     bx(0.18, 0.2, 1.0, MAT.sofa2, -1.38 * m, 0.42, 0)),
   sofaR: () => BUILD.sofa(null, -1),
   coffee(s) {
-    if (s.round) {   // runde Platte auf drei Beinen
+    if (s.shape) {   // runde Platte auf drei Beinen
       const r = s.w / 2, g = group(cyl(r, 0.04, MAT.oak, 0, s.h - 0.04, 0, 48));
       for (let k = 0; k < 3; k++) { const a = k * 2 * Math.PI / 3; g.add(cyl(0.02, s.h - 0.04, MAT.bronze, Math.cos(a) * r * 0.6, 0, Math.sin(a) * r * 0.6)); }
       return g;
@@ -214,7 +227,14 @@ const BUILD = {
   armchair: () => group(
     bx(0.8, 0.42, 0.85, MAT.sofa), bx(0.8, 0.4, 0.18, MAT.sofa2, 0, 0.42, 0.33),
     bx(0.14, 0.2, 0.85, MAT.sofa2, -0.33, 0.42), bx(0.14, 0.2, 0.85, MAT.sofa2, 0.33, 0.42)),
-  rug() { const m = bx(3.0, 0.012, 2.0, MAT.rug); m.castShadow = false; return group(m); },
+  rug(s) {   // flache Platte; rund/organisch aus dem Umriss extrudiert
+    let m;
+    if (s.shape) {
+      const geo = new THREE.ExtrudeGeometry(new THREE.Shape(outline(s, 72).map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 0.012, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2); m = new THREE.Mesh(geo, MAT.rug); m.receiveShadow = true;
+    } else m = bx(s.w, 0.012, s.d, MAT.rug);
+    m.castShadow = false; return group(m);
+  },
   shelf: () => group(bx(0.8, 1.9, 0.35, MAT.schrank)),
   tv() {   // 42″ an der Wand, Bildmitte ca. 1,10 m, Rückseite lokal +z
     const sc = bx(0.93, 0.52, 0.004, MAT.fire, 0, 0.84, -0.007); sc.castShadow = false;
@@ -239,16 +259,33 @@ const TYPES = {
   table:     { name: 'Esstisch', w: 2.0, d: 0.9, set: true, main: ['oak'] },
   bench:     { name: 'Bank', w: 2.0, d: 0.55, set: true, main: ['boucle'] },
   chair:     { name: 'Stuhl', w: 0.5, d: 0.55, set: true, main: ['boucle'] },
-  sideboard: { name: 'Sideboard', w: 2.33, d: 0.38, main: ['side'] },
+  sideboard: { name: 'Sideboard', main: ['side'], anchorBack: true, versions: [
+    { id: 'std', label: 'Standard', w: 2.33, d: 0.38, h: 0.84, legs: 0.12, fronts: 'CCCC' },
+    { id: 'low', label: 'Lang & niedrig', w: 2.2, d: 0.42, h: 0.55, legs: 0.08, fronts: 'CCCC' },
+    { id: 'high', label: 'Highboard', w: 1.2, d: 0.4, h: 1.3, legs: 0.1, fronts: 'CC' },
+    { id: 'openWide', label: 'Offen, breit', w: 2.0, d: 0.38, h: 0.75, legs: 0.1, fronts: 'OOOO', shelves: 1 },
+    { id: 'openTall', label: 'Offen, hoch', w: 1.0, d: 0.35, h: 1.1, legs: 0.05, fronts: 'OO', shelves: 2 },
+    { id: 'mixed', label: 'Halb offen', w: 1.8, d: 0.4, h: 0.8, legs: 0.1, fronts: 'CCOO', shelves: 1 },
+  ] },
   sofa:      { name: 'Ecksofa', w: 2.94, d: 1.0, main: ['sofa', 'sofa2'], foot: [[-1.47, -0.5, 1.47, 0.5], [0.47, -1.7, 1.47, -0.5]] },
   sofaR:     { name: 'Ecksofa (gespiegelt)', w: 2.94, d: 1.0, main: ['sofa', 'sofa2'], foot: [[-1.47, -0.5, 1.47, 0.5], [-1.47, -1.7, -0.47, -0.5]] },
   coffee:    { name: 'Couchtisch', main: ['oak'], versions: [
     { id: 'rect', label: 'Rechteckig', w: 1.05, d: 0.6, h: 0.4 },
     { id: 'square', label: 'Quadratisch', w: 0.8, d: 0.8, h: 0.38 },
-    { id: 'round', label: 'Rund', w: 0.9, d: 0.9, h: 0.38, round: true },
+    { id: 'round', label: 'Rund', w: 0.9, d: 0.9, h: 0.38, shape: 'ellipse' },
   ] },
   armchair:  { name: 'Sessel', w: 0.8, d: 0.85, main: ['sofa', 'sofa2'] },
-  rug:       { name: 'Teppich', w: 3.0, d: 2.0, soft: true, main: ['rug'] },
+  rug:       { name: 'Teppich', soft: true, main: ['rug'], versions: [
+    { id: 'std', label: 'Standard', w: 3.0, d: 2.0 },
+    { id: 'smallRect', label: 'Klein', w: 2.0, d: 1.4 },
+    { id: 'big', label: 'Groß', w: 4.0, d: 3.0 },
+    { id: 'square', label: 'Quadratisch', w: 2.5, d: 2.5 },
+    { id: 'runner', label: 'Läufer 5 m', w: 5.0, d: 0.8 },
+    { id: 'circleL', label: 'Rund groß', w: 2.4, d: 2.4, shape: 'ellipse' },
+    { id: 'circleS', label: 'Rund klein', w: 1.2, d: 1.2, shape: 'ellipse' },
+    { id: 'oval', label: 'Oval', w: 2.6, d: 1.7, shape: 'ellipse' },
+    { id: 'organic', label: 'Organisch', w: 2.6, d: 1.8, shape: 'blob' },
+  ] },
   shelf:     { name: 'Regal', w: 0.8, d: 0.35, main: ['schrank'] },
   plant:     { name: 'Pflanze', w: 0.5, d: 0.5, main: ['pot'] },
   tv:        { name: 'TV an der Wand (42″)', w: 0.95, d: 0.06, soft: true, wall: true, main: ['side'] },
@@ -269,6 +306,17 @@ function spec(p) {
   const t = TYPES[p.type], v = t.versions && (t.versions.find(x => x.id === p.v) || t.versions[0]);
   return v ? { ...t, ...v } : t;
 }
+// Umriss runder/organischer Formen in lokalen Koordinaten (x, z), passt genau in w × d.
+// Wird für das 3D-Modell und für Kollision/Abstände verwendet.
+function outline(s, n = 48) {
+  const pts = Array.from({ length: n }, (_, k) => {
+    const a = k * 2 * Math.PI / n;
+    const r = s.shape === 'blob' ? 1 + 0.13 * Math.sin(2 * a + 0.6) + 0.09 * Math.sin(3 * a + 2.1) + 0.05 * Math.sin(5 * a + 0.3) : 1;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  });
+  const fit = (v, i, size) => { const vs = pts.map(p => p[i]), lo = Math.min(...vs), hi = Math.max(...vs); return ((v - lo) / (hi - lo) - 0.5) * size; };
+  return pts.map(([x, z]) => [fit(x, 0, s.w), fit(z, 1, s.d)]);
+}
 const ADDABLE = ['tv', 'lowboard', 'chair', 'armchair', 'coffee', 'rug', 'shelf', 'plant', 'sideboard'];
 
 // ---------------------------------------------------------------- Varianten (rot in Grad gegen Uhrzeigersinn von oben)
@@ -284,7 +332,7 @@ function setAt(x, y, rot) {   // Tisch mit Bank (Süd) und 5 Stühlen um Tischmi
 }
 const PRESETS = [
   { id: 'A', name: 'Variante A', note: 'Sofa steht wie heute',
-    items: [...setAt(2.15, 1.36, 0), { type: 'sideboard', x: 1.40, y: 2.95, rot: 0 },
+    items: [...setAt(2.15, 1.36, 0), { type: 'sideboard', x: 1.40, y: 2.95, rot: 180 },
       { type: 'sofa', x: 9.361, y: 2.266, rot: 90 }, { type: 'coffee', x: 8.16, y: 1.75, rot: 90 }] },
 ];
 
@@ -347,12 +395,11 @@ const snapshot = () => pieces.map(({ type, x, y, rot, extSide, v, color }) =>
 // ---------------------------------------------------------------- Geometrie 2D (Plan)
 function footprint(p) {
   const t = spec(p);
-  if (t.round) { const r = t.w / 2; return [Array.from({ length: 20 }, (_, k) => [p.x + r * Math.cos(k * Math.PI / 10), p.y + r * Math.sin(k * Math.PI / 10)])]; }
-  let rects = t.foot || [[-t.w / 2, -t.d / 2, t.w / 2, t.d / 2]];
-  if (p.type === 'table' && tableExt) { const sd = extSideOf(p); rects = [[sd > 0 ? -1.0 : -1.8, -t.d / 2, sd > 0 ? 1.8 : 1.0, t.d / 2]]; }
+  let polys = t.shape ? [outline(t)] : (t.foot || [[-t.w / 2, -t.d / 2, t.w / 2, t.d / 2]]).map(r => rect(...r));
+  if (p.type === 'table' && tableExt) { const sd = extSideOf(p); polys = [rect(sd > 0 ? -1.0 : -1.8, -t.d / 2, sd > 0 ? 1.8 : 1.0, t.d / 2)]; }
   const c = Math.cos(p.rot * Math.PI / 180), s = Math.sin(p.rot * Math.PI / 180);
   // lokale Tiefe z entspricht Plan -y
-  return rects.map(([x0, z0, x1, z1]) => rect(x0, z0, x1, z1).map(([lx, lz]) => [p.x + lx * c + lz * s, p.y + lx * s - lz * c]));
+  return polys.map(poly => poly.map(([lx, lz]) => [p.x + lx * c + lz * s, p.y + lx * s - lz * c]));
 }
 const segsOf = poly => poly.map((a, i) => [a, poly[(i + 1) % poly.length]]);
 function segX(a, b, c, d) {
@@ -454,7 +501,7 @@ function renderSel() {
   const stdColor = '#' + MAT[t.main[0]].color.getHexString();
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><strong>${t.name}</strong>
-      <span class="num" style="color:var(--muted);font-size:12px">${t.round ? 'Ø ' + de(w) : de(w) + ' × ' + de(t.d)} m</span></div>
+      <span class="num" style="color:var(--muted);font-size:12px">${t.shape === 'ellipse' && t.w === t.d ? 'Ø ' + de(w) : de(w) + ' × ' + de(t.d)} m</span></div>
     <dl class="kv" style="margin:8px 0">
       <dt>Position</dt><dd class="num">${de(p.x)} / ${de(p.y)} m</dd>
       <dt>Drehung</dt><dd class="num">${Math.round(((p.rot % 360) + 360) % 360)}°</dd>
@@ -473,8 +520,15 @@ function renderSel() {
       <button class="btn" id="delSel">Entfernen</button>
     </div>`;
   el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => rotateSel(+b.dataset.r));
-  // Ausführung wechseln (Wandmöbel danach neu an die Wand setzen, weil sich die Tiefe ändert) / Farbe wählen
-  el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { p.v = b.dataset.v; rebuild(p); if (t.wall) snapToWall(p); markCustom(); refresh(); });
+  // Ausführung wechseln: Wandmöbel neu an die Wand setzen; bei anchorBack bleibt die Rückkante stehen (Tiefe wächst nach vorn)
+  el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
+    p.v = b.dataset.v;
+    if (t.anchorBack) {
+      const grow = (spec(p).d - t.d) / 2, a = p.rot * Math.PI / 180;   // Verschiebung Richtung Vorderseite (lokal -z)
+      p.x -= grow * Math.sin(a); p.y += grow * Math.cos(a);
+    }
+    rebuild(p); if (t.wall) snapToWall(p); markCustom(); refresh();
+  });
   el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { p.color = b.dataset.c || undefined; rebuild(p); markCustom(); refresh(); });
   $('delSel').onclick = delSel;
   if (p.type === 'table') {
