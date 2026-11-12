@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Wohnzimmer EG 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="c" tabindex="0" aria-label="3D-Ansicht Wohnzimmer"></canvas>
+    <div class="hud">
+      <div class="seg" role="group" aria-label="Ansicht">
+        <button id="v3d" aria-pressed="true">3D</button>
+        <button id="vtop" aria-pressed="false">Draufsicht</button>
+        <button id="veye" aria-pressed="false">Augenhöhe</button>
+      </div>
+    </div>
+    <div id="labels"></div>
+    <div class="hint">Möbel ziehen · R / ⇧R um 90° drehen · Pfeiltasten schieben · Entf löschen · Hintergrund ziehen = Ansicht drehen · Augenhöhe: umsehen, Mausrad/WASD = gehen</div>
+  </div>
+  <aside>
+    <div>
+      <h1>Wohnzimmer EG</h1>
+      <div class="sub"><span class="num" id="area"></span> m² · Raumhöhe <span class="num">2,44</span> m · Maße aus Bauplan und Scan</div>
+    </div>
+
+    <section>
+      <h2>Varianten</h2>
+      <div class="vlist" id="vlist"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="vname" placeholder="Name der neuen Variante" aria-label="Name der neuen Variante">
+        <button class="btn primary" id="vsave">Aktuelle Anordnung speichern</button>
+      </div>
+      <p class="note" id="vstore"></p>
+    </section>
+
+    <section>
+      <h2>Auswahl</h2>
+      <div id="sel"></div>
+    </section>
+
+    <section>
+      <h2>Hinzufügen</h2>
+      <div class="row" id="addrow"></div>
+    </section>
+
+    <section>
+      <h2>Darstellung</h2>
+      <label class="chk"><input type="checkbox" id="optCut" checked> Wände halbhoch schneiden</label>
+      <label class="chk"><input type="checkbox" id="optDims" checked> Wandabstände anzeigen</label>
+    </section>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
