@@ -10,6 +10,7 @@ Interaktiver 3D-Möbelplaner fürs Wohnzimmer im EG (Three.js, kein Build-Schrit
 - Esstisch ausziehbar (2,00 → 2,80 m), Ecksofa spiegelbar
 - Wände einzeln anklicken und streichen (Palette oder eigene Farbe); Wandfarben werden mit der Variante gespeichert
 - Pflanzen in 9 Arten (Busch, Monstera, Geigenfeige, Strelitzie, Kentiapalme, Olivenbaum, Bogenhanf, Säulenkaktus, Pampasgras)
+- Download-Symbol oben in der Ansicht speichert das aktuelle Bild als PNG (inkl. Wandabstände, ohne Bedienelemente)
 - Eigene Varianten werden im Browser gespeichert (localStorage)
 - Varianten als Link teilen: „Link teilen“ (aktuelle Anordnung) oder das Link-Symbol an einer gespeicherten Variante zeigt eine URL (und kopiert sie), in der die ganze Anordnung samt Wandfarben und Tischauszug steckt (komprimiert im `#v=…`-Hash, kein Server). Wer den Link öffnet, sieht die Variante und kann sie bei sich speichern.
 - Inspirations-Galerie als Vollbild-Lightbox: einfach Bilder in `inspiration/` legen und pushen (Dateien mit `fav` im Namen kommen zuerst). Die Bildliste kommt von der GitHub-API, lokal erscheinen neue Bilder also erst nach dem Push.

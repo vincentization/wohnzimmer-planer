@@ -996,6 +996,29 @@ for (const t of ADDABLE) {
 $('optCut').onclick = () => { cutAuto = false; setOn('optCut', !isOn('optCut')); buildRoom(); refresh(); };
 $('optDims').onclick = () => { setOn('optDims', !isOn('optDims')); refresh(); };
 
+// ---------------------------------------------------------------- Ansicht als PNG (3D-Bild + Maß-Etiketten, ohne Bedienelemente)
+$('dlPng').onclick = () => {
+  renderer.render(scene, camera);   // direkt danach auslesen, solange der WebGL-Puffer noch gefüllt ist
+  const out = document.createElement('canvas'); out.width = canvas.width; out.height = canvas.height;
+  const g = out.getContext('2d'); g.drawImage(canvas, 0, 0);
+  const cr = canvas.getBoundingClientRect(), k = canvas.width / cr.width;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const el of labelsEl.children) {
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    const x = (r.left - cr.left) * k, y = (r.top - cr.top) * k, w = r.width * k, h = r.height * k;
+    g.fillStyle = cs.backgroundColor; g.beginPath(); g.roundRect(x, y, w, h, parseFloat(cs.borderRadius) * k); g.fill();
+    g.fillStyle = cs.color; g.font = `${cs.fontWeight} ${parseFloat(cs.fontSize) * k}px ${cs.fontFamily}`;
+    g.fillText(el.textContent, x + w / 2, y + h / 2);
+  }
+  const t = new Date(), pad = n => String(n).padStart(2, '0');
+  const view = isOn('vtop') ? 'draufsicht' : isOn('veye') ? 'augenhoehe' : '3d';
+  out.toBlob(b => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+    a.download = `wohnzimmer-eg-${view}-${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}.png`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+};
+
 function resize() {
   const r = stage.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
   camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
