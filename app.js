@@ -856,44 +856,96 @@ $('v3d').onclick = () => setView('3d');
 $('vtop').onclick = () => setView('top');
 $('veye').onclick = () => setView('eye');
 
-// ---------------------------------------------------------------- Varianten speichern (localStorage)
+// ---------------------------------------------------------------- Varianten: gemeinsam in Supabase (für alle sichtbar), Ausweichlösung im Browser
+// Der Publishable Key ist für Webseiten gedacht; was er darf (lesen, anlegen, löschen), regeln die RLS-Policies in supabase/migrations/.
+const SB = 'https://wnpmzexykrdxzhgnkyuo.supabase.co/rest/v1/variants';
+const SB_KEY = 'sb_publishable_6voeH--tdFbMYf1dWm8PIQ_xejWU0ta';
+const sb = (q, opt = {}) => fetch(SB + q, { ...opt, headers: { apikey: SB_KEY, 'Content-Type': 'application/json', ...(opt.headers || {}) } })
+  .then(async r => { if (!r.ok) throw new Error(r.status); return r.status === 204 ? null : r.json(); });
+const fmtDate = d => new Date(d).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+
+let shared = [], sharedOk = null;   // null = lädt, true/false = Server erreichbar
+function fromRow(r) {
+  const d = r.data || {};
+  return { ...cleanVariant({ n: r.name, i: d.items, e: d.ext, w: d.walls }), id: r.id, note: fmtDate(r.created_at) };
+}
+async function loadShared() {
+  try {
+    const rows = await sb('?select=id,name,data,created_at&order=created_at.asc');
+    shared = rows.flatMap(r => { try { return [fromRow(r)]; } catch { return []; } });
+    sharedOk = true;
+  } catch {
+    if (sharedOk !== false) $('vstore').textContent = 'Gemeinsame Varianten sind gerade nicht erreichbar – Neues wird vorerst nur in diesem Browser gespeichert.';
+    sharedOk = false;
+  }
+  renderVariants();
+}
+async function saveShared(name, data) {
+  const [row] = await sb('', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ name: name.slice(0, 80), data }) });
+  const v = fromRow(row); shared.push(v); return v;
+}
+
+// Nur im Browser: ältere Varianten von vor der Umstellung und Speichern, wenn der Server nicht erreichbar ist
 const LS = 'wohnzimmer-eg-varianten-v1';
-let saved = [];
-try { saved = JSON.parse(localStorage.getItem(LS) || '[]'); } catch { saved = []; }
-function persist() { try { localStorage.setItem(LS, JSON.stringify(saved)); return true; } catch { return false; } }
+let local = [];
+try { local = JSON.parse(localStorage.getItem(LS) || '[]'); } catch { local = []; }
+function persist() { try { localStorage.setItem(LS, JSON.stringify(local)); return true; } catch { return false; } }
+
 function markCustom() { if (activeVariant && !activeVariant.startsWith('*')) activeVariant = '*' + activeVariant; renderVariants(); }
+function iconBtn(html, title, fn) {
+  const s = document.createElement('span'); s.className = 'x'; s.innerHTML = html; s.title = title; s.setAttribute('role', 'button');
+  s.onclick = ev => { ev.stopPropagation(); fn(); }; return s;
+}
 function renderVariants() {
   const el = $('vlist'); el.innerHTML = '';
-  const all = [...PRESETS.map(v => ({ ...v, preset: true })), ...saved.map((v, i) => ({ ...v, idx: i }))];
+  const all = [...PRESETS.map(v => ({ ...v, kind: 'preset' })), ...shared.map(v => ({ ...v, kind: 'shared' })), ...local.map(v => ({ ...v, kind: 'local' }))];
   for (const v of all) {
     const b = document.createElement('button'); b.className = 'vbtn';
     const on = activeVariant === v.id || activeVariant === '*' + v.id;
     b.setAttribute('aria-pressed', String(on));
     b.innerHTML = `<span><span></span>${on && activeVariant.startsWith('*') ? ' <small>(geändert)</small>' : ''}<br><small></small></span>`;
     b.querySelector('span span').textContent = v.name;
-    b.querySelector('br + small').textContent = v.note || 'eigene Variante';
-    if (!v.preset) {
+    b.querySelector('br + small').textContent = v.kind === 'local' ? (v.note ? v.note + ' · ' : '') + 'nur in diesem Browser' : v.note || '';
+    if (v.kind !== 'preset') {
       const acts = document.createElement('span'); acts.className = 'acts';
-      const l = document.createElement('span'); l.className = 'x'; l.innerHTML = LINK_ICON; l.title = 'Link zu dieser Variante kopieren'; l.setAttribute('role', 'button');
-      l.onclick = ev => { ev.stopPropagation(); shareLink(v); };
-      const x = document.createElement('span'); x.className = 'x'; x.textContent = '×'; x.title = 'Variante löschen'; x.setAttribute('role', 'button');
-      x.onclick = ev => { ev.stopPropagation(); saved.splice(v.idx, 1); persist(); renderVariants(); };
-      acts.append(l, x); b.appendChild(acts);
+      if (v.kind === 'local') acts.append(iconBtn(UP_ICON, 'Für alle speichern', () => uploadLocal(v)));
+      acts.append(iconBtn(LINK_ICON, 'Link zu dieser Variante kopieren', () => shareLink(v)));
+      acts.append(iconBtn('×', v.kind === 'shared' ? 'Für alle löschen' : 'Variante löschen', () => deleteVariant(v)));
+      b.appendChild(acts);
     }
     b.onclick = () => { applyVariant(v); activeVariant = v.id; refresh(); };
     el.appendChild(b);
   }
 }
+async function deleteVariant(v) {
+  if (v.kind === 'local') { local = local.filter(s => s.id !== v.id); persist(); renderVariants(); return; }
+  if (!confirm(`„${v.name}“ für alle löschen?`)) return;
+  try { await sb('?id=eq.' + encodeURIComponent(v.id), { method: 'DELETE' }); shared = shared.filter(s => s.id !== v.id); $('vstore').textContent = `„${v.name}“ gelöscht.`; }
+  catch { $('vstore').textContent = 'Löschen hat nicht geklappt – bitte später noch einmal.'; }
+  renderVariants();
+}
+async function uploadLocal(v) {
+  try {
+    const nv = await saveShared(v.name, { items: v.items, ext: !!v.ext, walls: v.walls || {} });
+    local = local.filter(s => s.id !== v.id); persist();
+    if (activeVariant.replace(/^\*/, '') === v.id) activeVariant = activeVariant.replace(v.id, nv.id);
+    $('vstore').textContent = `„${v.name}“ ist jetzt für alle sichtbar.`;
+  } catch { $('vstore').textContent = 'Server nicht erreichbar – bitte später noch einmal.'; }
+  renderVariants();
+}
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadShared(); });   // Neues von anderen beim Zurückkommen
 // Voreinstellung übernimmt den aktuellen Auszugszustand, gespeicherte/geteilte Varianten ihren eigenen
 function applyVariant(v) {
-  if (!v.preset) { tableExt = !!v.ext; wallColors = { ...(v.walls || {}) }; }
+  const preset = v.kind === 'preset';
+  if (!preset) { tableExt = !!v.ext; wallColors = { ...(v.walls || {}) }; }
   selWall = null; paintWalls();
   loadItems(v.items);
-  if (v.preset && tableExt) shiftEndChairs(0.8);
+  if (preset && tableExt) shiftEndChairs(0.8);
 }
 
 // ---------------------------------------------------------------- Varianten als Link teilen (#v=… im URL-Hash, nichts verlässt den Browser)
 const LINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>';
+const UP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5H6a4 4 0 0 1-.6-8 6 6 0 0 1 11.6-1.5A4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20v-8M9 14.5l3-3 3 3"/></svg>';
 const b64u = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
@@ -906,7 +958,10 @@ async function encodeVariant(v) {
 async function decodeVariant(s) {
   const raw = unb64u(s.slice(1));
   const json = s[0] === 'z' ? await pipe(raw, new DecompressionStream('deflate-raw')) : raw;
-  const d = JSON.parse(new TextDecoder().decode(json));
+  return cleanVariant(JSON.parse(new TextDecoder().decode(json)));
+}
+// Fremde Daten (Link oder Server) nur mit bekannten Möbeltypen, Zahlen und Farbcodes übernehmen
+function cleanVariant(d) {
   const num = n => typeof n === 'number' && isFinite(n);
   const items = (Array.isArray(d.i) ? d.i : []).filter(p => p && TYPES[p.type] && num(p.x) && num(p.y) && (p.rot === undefined || num(p.rot)))
     .map(({ type, x, y, rot, extSide, v, color }) => ({ type, x, y, rot: rot || 0,
@@ -934,7 +989,7 @@ $('vlink').onclick = $('vlink').onfocus = e => e.target.select();
 $('vlinkcopy').onclick = () => copyLink($('vlink').value, linkName);
 function currentName() {
   const id = (activeVariant || '').replace(/^\*/, '');
-  const v = saved.find(s => s.id === id) || PRESETS.find(s => s.id === id) || (id === 'L' && sharedVariant);
+  const v = [...shared, ...local, ...PRESETS].find(s => s.id === id) || (id === 'L' && sharedVariant);
   const typed = $('vname').value.trim();
   return typed || (v ? v.name + (activeVariant.startsWith('*') ? ' (geändert)' : '') : 'Geteilte Variante');
 }
@@ -954,12 +1009,21 @@ async function openFromHash() {
 }
 addEventListener('hashchange', openFromHash);
 
-$('vsave').onclick = () => {
-  const inp = $('vname'), id = 'S' + Date.now();
-  saved.push({ id, name: inp.value.trim() || ('Variante ' + (saved.length + 1)),
-    note: new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }), items: snapshot(), ext: tableExt, walls: { ...wallColors } });
-  activeVariant = id; inp.value = '';
-  $('vstore').textContent = persist() ? 'Gespeichert in diesem Browser.' : 'Speichern ist in diesem Browser gesperrt – die Variante gilt nur bis zum Neuladen.';
+$('vsave').onclick = async () => {
+  const inp = $('vname'), btn = $('vsave');
+  const name = (inp.value.trim() || ('Variante ' + (shared.length + local.length + 2))).slice(0, 80);
+  const data = { items: snapshot(), ext: tableExt, walls: { ...wallColors } };
+  btn.disabled = true; $('vstore').textContent = 'Speichert …';
+  try {
+    activeVariant = (await saveShared(name, data)).id;
+    $('vstore').textContent = `„${name}“ gespeichert – für alle sichtbar.`;
+  } catch {
+    const id = 'S' + Date.now();
+    local.push({ id, name, note: fmtDate(Date.now()), ...data }); activeVariant = id;
+    $('vstore').textContent = persist() ? 'Server nicht erreichbar – vorerst nur in diesem Browser gespeichert (Wolken-Symbol lädt sie später hoch).'
+      : 'Speichern hat nicht geklappt – die Variante gilt nur bis zum Neuladen.';
+  }
+  inp.value = ''; btn.disabled = false;
   renderVariants();
 };
 
@@ -1028,4 +1092,5 @@ $('area').textContent = de(ROOM.area);
 buildRoom(); setView('3d'); resize();
 loadItems(PRESETS[0].items);
 openFromHash();
+loadShared();
 (function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); updateLabels(); })();
