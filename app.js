@@ -103,7 +103,7 @@ const MAT = {
   glass: M(0xa9c6d6, { transparent: true, opacity: 0.2, roughness: 0.1, depthWrite: false }),
   kamin: M(0x8d8a84), schrank: M(0xe6e1d6),
   ofen: M(0xa39e95, { roughness: 1 }), ofenHood: M(0xb3aea5, { roughness: 1 }), fire: M(0x1c1a18, { roughness: 0.9 }), hearth: M(0x4a4744, { roughness: 0.5 }),
-  oak: M(0xb88a58, { roughness: 0.6 }), boucle: M(0x4b4743, { roughness: 1 }), leather: M(0x7a4e33, { roughness: 0.55 }),
+  oak: M(0xb88a58, { roughness: 0.6 }), boucle: M(0x4b4743, { roughness: 1 }),
   bronze: M(0x8d6b3f, { metalness: 0.6, roughness: 0.4 }), sofa: M(0x9a958c, { roughness: 1 }), sofa2: M(0x8a857c, { roughness: 1 }),
   side: M(0x3f3a35, { roughness: 0.6 }), rug: M(0xcfc6b5, { roughness: 1 }), plant: M(0x4e6b45), pot: M(0x6d6157),
   plantL: M(0x6a8a50), snake: M(0x44603d, { roughness: 0.6 }), olive: M(0x8a9874, { roughness: 1 }), cactus: M(0x5a7a4c),
@@ -175,6 +175,26 @@ function cyl(r, h, mat, x = 0, y = 0, z = 0, seg = 20) {
   m.position.set(x, y + h / 2, z); m.castShadow = true; return m;
 }
 const group = (...parts) => { const g = new THREE.Group(); parts.forEach(p => g.add(p)); return g; };
+// Abgerundete Teile: Umriss w × h mit Eckradien rb (unten) / rt (oben), Dicke t, weiche Kanten (bev). Außenmaße bleiben w × h × t.
+function softGeo(w, h, t, rb, rt, bev) {
+  const W = w - 2 * bev, H = h - 2 * bev, T = Math.max(t - 2 * bev, 0.001), e = 0.0005;
+  const R = Math.max(Math.min(rt - bev, W / 2, H - e), e), r = Math.max(Math.min(rb - bev, W / 2, H - R), e);
+  const x0 = -W / 2, x1 = W / 2, y0 = -H / 2, y1 = H / 2, pts = [];
+  // Ecken als Viertelkreise gegen den Uhrzeigersinn; doppelte Punkte weglassen, sonst knickt die Fase ein
+  for (const [cx, cy, rr, a0] of [[x1 - r, y0 + r, r, -90], [x1 - R, y1 - R, R, 0], [x0 + R, y1 - R, R, 90], [x0 + r, y0 + r, r, 180]])
+    for (let i = 0; i <= 12; i++) {
+      const a = (a0 + i * 7.5) * Math.PI / 180, v = new THREE.Vector2(cx + rr * Math.cos(a), cy + rr * Math.sin(a));
+      if (!pts.length || v.distanceTo(pts[pts.length - 1]) > 1e-4) pts.push(v);
+    }
+  if (pts[0].distanceTo(pts[pts.length - 1]) < 1e-4) pts.pop();
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: T, bevelEnabled: bev > 0, bevelThickness: bev, bevelSize: bev, bevelSegments: 3 });
+  return g.translate(0, 0, -T / 2);   // Mitte bei 0, z von -t/2 bis t/2
+}
+const softMesh = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; return m; };
+// stehend (Lehne): Umriss in x/y, Unterkante bei y
+const softUp = (w, h, d, mat, x, y, z, { rb = 0.02, rt = 0.02, bev = 0.015 } = {}) => softMesh(softGeo(w, h, d, rb, rt, bev).translate(0, h / 2, 0), mat, x, y, z);
+// liegend (Sitz, Platte): Umriss im Grundriss x/z mit Eckradius r, Unterseite bei y
+const softFlat = (w, h, d, mat, x, y, z, { r = 0.05, bev = 0.015 } = {}) => softMesh(softGeo(w, d, h, r, r, bev).rotateX(-Math.PI / 2).translate(0, h / 2, 0), mat, x, y, z);
 // Pflanzen-Bausteine
 const SPH = new THREE.SphereGeometry(1, 14, 10), UP = new THREE.Vector3(0, 1, 0), FWD = new THREE.Vector3(0, 0, 1);
 const hr = k => { const v = Math.sin(k * 12.9898 + 4.1) * 43758.5453; return v - Math.floor(v); };   // feste Zufallszahl je k
@@ -199,7 +219,7 @@ const BUILD = {
   table(ext, side = 1) {
     const g = new THREE.Group();
     const L = ext ? 2.8 : 2.0, D = 0.9, leg = 0.08, ins = 0.03, off = ext ? side * 0.4 : 0;
-    g.add(bx(L, 0.04, D, MAT.oak, off, 0.71));
+    g.add(softFlat(L, 0.04, D, MAT.oak, off, 0.71, 0, { r: 0.08, bev: 0.006 }));   // Platte mit runden Ecken
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(bx(leg, 0.71, leg, MAT.oak, off + sx * (L / 2 - ins - leg / 2), 0, sz * (D / 2 - ins - leg / 2)));
     const ax = L - 2 * (ins + leg), az = D - 2 * (ins + leg);   // Zarge
     for (const sz of [-1, 1]) g.add(bx(ax, 0.09, 0.025, MAT.oak, off, 0.62, sz * (D / 2 - ins - 0.02)));
@@ -207,11 +227,14 @@ const BUILD = {
     if (ext) for (const sx of [1.0, 1.4]) g.add(bx(0.004, 0.002, D, MAT.fire, side * sx, 0.75));   // Fugen der Einlegeplatten
     return g;
   },
+  // Sitz und Lehne gepolstert im selben Stoff, Lehne oben rund
   bench: () => group(   // Rückenlehne auf +z
-    bx(2.0, 0.1, 0.48, MAT.boucle, 0, 0.37, -0.03), bx(2.0, 0.42, 0.08, MAT.leather, 0, 0.45, 0.23),
+    softFlat(2.0, 0.1, 0.48, MAT.boucle, 0, 0.37, -0.03, { r: 0.07, bev: 0.025 }),
+    softUp(2.0, 0.42, 0.08, MAT.boucle, 0, 0.45, 0.23, { rt: 0.16, bev: 0.025 }),
     bx(0.05, 0.37, 0.5, MAT.bronze, -0.85), bx(0.05, 0.37, 0.5, MAT.bronze, 0.85)),
   chair: () => group(   // Lehne auf +z
-    bx(0.5, 0.08, 0.48, MAT.boucle, 0, 0.39, -0.02), bx(0.5, 0.42, 0.06, MAT.leather, 0, 0.47, 0.22),
+    softFlat(0.5, 0.08, 0.48, MAT.boucle, 0, 0.39, -0.02, { r: 0.07, bev: 0.022 }),
+    softUp(0.5, 0.42, 0.06, MAT.boucle, 0, 0.47, 0.22, { rt: 0.17, bev: 0.022 }),
     cyl(0.03, 0.39, MAT.bronze), bx(0.5, 0.025, 0.05, MAT.bronze), bx(0.05, 0.025, 0.5, MAT.bronze)),
   // Korpus aus Platten mit Fächern; fronts: je Fach 'C' = Tür (geschlossen) oder 'O' = offen mit Einlegeböden. Rückseite lokal +z
   sideboard(s) {
