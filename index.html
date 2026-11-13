@@ -18,6 +18,14 @@
         <button id="vtop" aria-pressed="false">Draufsicht</button>
         <button id="veye" aria-pressed="false">Augenhöhe</button>
       </div>
+      <div class="seg" role="group" aria-label="Darstellung">
+        <button class="ico" id="optCut" aria-pressed="true" title="Wände halbhoch schneiden" aria-label="Wände halbhoch schneiden">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16v7H4z"/><path d="M4 13V4h16v9" stroke-dasharray="2 2.6"/></svg>
+        </button>
+        <button class="ico" id="optDims" aria-pressed="true" title="Wandabstände anzeigen" aria-label="Wandabstände anzeigen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7v10M20.5 7v10M3.5 12h17M6.5 9l-3 3 3 3M17.5 9l3 3-3 3"/></svg>
+        </button>
+      </div>
     </div>
     <div id="labels"></div>
     <div class="hint">Möbel ziehen · R / ⇧R um 90° drehen · Pfeiltasten schieben · Entf löschen · Wand anklicken = Farbe wählen · Hintergrund ziehen = Ansicht drehen · Augenhöhe: umsehen, Mausrad/WASD = gehen</div>
@@ -54,11 +62,6 @@
       <div class="irow" id="addrow"></div>
     </section>
 
-    <section>
-      <h2>Darstellung</h2>
-      <label class="chk"><input type="checkbox" id="optCut" checked> Wände halbhoch schneiden</label>
-      <label class="chk"><input type="checkbox" id="optDims" checked> Wandabstände anzeigen</label>
-    </section>
   </aside>
 </div>
 

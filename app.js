@@ -25,6 +25,9 @@ const SWING = [[3.98, 0.219], [5.87, 0.219], [5.87, 1.17], [3.98, 1.17]];
 const de = (v, d = 2) => v.toFixed(d).replace('.', ',');
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const $ = id => document.getElementById(id);
+// Umschalter in der 3D-Ansicht (aria-pressed)
+const isOn = id => $(id).getAttribute('aria-pressed') === 'true';
+const setOn = (id, on) => $(id).setAttribute('aria-pressed', String(on));
 const rect = (a, b, c, d) => [[a, b], [c, b], [c, d], [a, d]];
 // Alter Kaminzug sitzt zwischen den beiden Scan-Wänden
 const KAMIN = rect(ROOM.kamin[0], ROOM.kamin[1], SCAN_WALLS[1][0], ROOM.kamin[3]);
@@ -128,7 +131,7 @@ const roomG = new THREE.Group(); scene.add(roomG);
 let wallParts = [];   // Grundrisse aller festen Teile (für Kollision + Abstände)
 function buildRoom() {
   roomG.clear();
-  const cut = $('optCut').checked, top = cut ? 1.15 : H;
+  const cut = isOn('optCut'), top = cut ? 1.15 : H;
   ROOM.floor.forEach(p => roomG.add(flat(p, 0, MAT.floor)));
   ROOM.context.forEach(p => roomG.add(flat(p, -0.002, MAT.ctx)));
   // Türaufschläge als feine Spur auf dem Boden
@@ -644,7 +647,7 @@ const selBox = new THREE.BoxHelper(undefined, 0xd08a3c); selBox.visible = false;
 
 function computeDims(p) {
   dims = [];
-  if (!p || !$('optDims').checked) return;
+  if (!p || !isOn('optDims')) return;
   const pts = footprint(p).flat(), xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   for (const [o, d] of [[[x1, cy], [1, 0]], [[x0, cy], [-1, 0]], [[cx, y1], [0, 1]], [[cx, y0], [0, -1]]]) {
@@ -827,7 +830,7 @@ window.addEventListener('keydown', e => {
   const m = { w: [st, 0], s: [-st, 0], a: [0, -st], d: [0, st] }[k] || (!selected && { arrowup: [st, 0], arrowdown: [-st, 0], arrowleft: [0, -st], arrowright: [0, st] }[k]);
   if (m) { e.preventDefault(); walk(...m); }
 });
-function setCut(on) { const c = $('optCut'); if (c.checked !== on) { c.checked = on; buildRoom(); refresh(); } }
+function setCut(on) { if (isOn('optCut') !== on) { setOn('optCut', on); buildRoom(); refresh(); } }
 function setView(v) {
   view = v;
   for (const [id, k] of [['v3d', '3d'], ['vtop', 'top'], ['veye', 'eye']]) $(id).setAttribute('aria-pressed', String(k === v));
@@ -922,8 +925,8 @@ for (const t of ADDABLE) {
 }
 
 // ---------------------------------------------------------------- Optionen + Start
-$('optCut').onchange = () => { cutAuto = false; buildRoom(); refresh(); };
-$('optDims').onchange = refresh;
+$('optCut').onclick = () => { cutAuto = false; setOn('optCut', !isOn('optCut')); buildRoom(); refresh(); };
+$('optDims').onclick = () => { setOn('optDims', !isOn('optDims')); refresh(); };
 
 function resize() {
   const r = stage.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
