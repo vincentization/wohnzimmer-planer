@@ -31,10 +31,25 @@
     <div class="hint">Möbel ziehen · R / ⇧R um 90° drehen · Pfeiltasten schieben · Entf löschen · Wand anklicken = Farbe wählen · Hintergrund ziehen = Ansicht drehen · Augenhöhe: umsehen, Mausrad/WASD = gehen</div>
   </div>
   <aside>
+    <section id="selCard" aria-labelledby="selTitle" hidden>
+      <h2 id="selTitle">Auswahl</h2>
+      <div class="selcard">
+        <button class="selclose" id="selClose" title="Auswahl aufheben (Esc)" aria-label="Auswahl schließen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+        <div id="sel"></div>
+      </div>
+    </section>
+
     <div>
       <h1>Wohnzimmer EG</h1>
       <div class="sub"><span class="num" id="area"></span> m² · Raumhöhe <span class="num">2,44</span> m · Maße aus Bauplan und Scan</div>
     </div>
+
+    <section>
+      <h2>Hinzufügen</h2>
+      <div class="irow" id="addrow"></div>
+    </section>
 
     <section>
       <h2>Inspiration</h2>
@@ -50,16 +65,6 @@
         <button class="btn primary" id="vsave">Aktuelle Anordnung speichern</button>
       </div>
       <p class="note" id="vstore"></p>
-    </section>
-
-    <section>
-      <h2>Auswahl</h2>
-      <div id="sel"></div>
-    </section>
-
-    <section>
-      <h2>Hinzufügen</h2>
-      <div class="irow" id="addrow"></div>
     </section>
 
   </aside>

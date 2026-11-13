@@ -686,8 +686,8 @@ function highlight() {
 }
 function renderSel() {
   const el = $('sel');
-  if (!selected && selWall) { renderWallSel(el); selBox.visible = false; return; }
-  if (!selected) { el.innerHTML = '<p class="sel-empty">Ein Möbelstück anklicken, um es zu bewegen und Abstände zu sehen, oder eine Wand anklicken, um sie zu streichen.</p>'; selBox.visible = false; return; }
+  $('selCard').hidden = !selected && !selWall;   // Karte nur zeigen, wenn etwas gewählt ist
+  if (!selected) { if (selWall) renderWallSel(el); else el.innerHTML = ''; selBox.visible = false; return; }
   const p = selected, t = spec(p);
   const w = p.type === 'table' && tableExt ? 2.8 : t.w;
   const iss = issues(p), minD = dims.length ? Math.min(...dims.map(x => x.val)) : null;
@@ -787,6 +787,8 @@ canvas.addEventListener('pointerup', e => {
   else if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) { ndcOf(e); selected = null; selWall = wallHit(); paintWalls(); refresh(); }
   downAt = null;
 });
+function deselect() { selected = null; selWall = null; paintWalls(); refresh(); }
+$('selClose').onclick = deselect;
 // Klick ohne Möbel: nächste Fläche im Raum; ist es eine Farbschicht, wird die Wand gewählt
 function wallHit() {
   ray.setFromCamera(ndc, camera);
@@ -803,12 +805,12 @@ function rotateSel(deg) {
 function delSel() { if (!selected) return; furnG.remove(selected.obj); pieces = pieces.filter(p => p !== selected); selected = null; markCustom(); refresh(); }
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (!selected) { if (e.key === 'Escape' && selWall) { selWall = null; paintWalls(); refresh(); } return; }
+  if (!selected) { if (e.key === 'Escape' && selWall) deselect(); return; }
   const st = e.shiftKey ? 0.01 : 0.05;
   const mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
   if (e.key === 'r' || e.key === 'R') rotateSel(e.shiftKey ? 90 : -90);
   else if (e.key === 'Delete' || e.key === 'Backspace') delSel();
-  else if (e.key === 'Escape') { selected = null; refresh(); return; }
+  else if (e.key === 'Escape') { deselect(); return; }
   else if (mv) { [selected, ...setPartners(selected)].forEach(q => { q.x += mv[0]; q.y += mv[1]; place(q); }); markCustom(); refresh(); }
   else return;
   e.preventDefault();
