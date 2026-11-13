@@ -31,6 +31,8 @@ Tabelle `variants` im Supabase-Projekt `wnpmzexykrdxzhgnkyuo`, angelegt mit [sup
 
 GitHub Pages, Quelle: Branch `main`, Ordner `/`. Jeder Push auf `main` ist automatisch live.
 
+GitHub Pages lässt Browser alle Dateien 10 Minuten cachen. Damit niemand den Cache leeren muss, vergleicht die Seite beim Öffnen und beim Zurückkehren in den Tab ihr `Last-Modified` mit dem am Server. Ist eine neuere Version online, holt sie die eigenen Dateien am Cache vorbei und lädt neu – bei ungespeicherten Änderungen stattdessen mit Hinweis „Neu laden“.
+
 ## Dateien
 
 - `index.html` – Markup

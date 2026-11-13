@@ -933,7 +933,32 @@ async function uploadLocal(v) {
   } catch { $('vstore').textContent = 'Server nicht erreichbar – bitte später noch einmal.'; }
   renderVariants();
 }
-addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadShared(); });   // Neues von anderen beim Zurückkommen
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { loadShared(); checkUpdate(); } });   // Neues beim Zurückkommen
+
+// ---------------------------------------------------------------- Neue Version erkennen
+// GitHub Pages lässt Browser alle Dateien 10 Minuten cachen, Handys holen offene Tabs oft gar nicht neu.
+// Daher: Last-Modified der Seite am Server mit der geladenen vergleichen; bei neuer Version alle eigenen
+// Dateien am Cache vorbei holen (cache: 'reload' erneuert dabei den Cache) und neu laden.
+let updating = false;
+async function checkUpdate() {
+  if (updating) return;
+  const mine = Date.parse(document.lastModified);
+  let live;
+  try { live = Date.parse((await fetch(location.pathname, { cache: 'reload' })).headers.get('last-modified')); } catch { return; }
+  if (!(live > mine + 1000)) return;
+  updating = true;
+  const own = [...document.querySelectorAll('script[src], link[rel="stylesheet"]')].map(e => e.src || e.href).filter(u => new URL(u).origin === location.origin);
+  await Promise.all(own.map(u => fetch(u, { cache: 'reload' }).catch(() => {})));
+  const unsaved = activeVariant === 'L' || (activeVariant || '').startsWith('*');
+  let tried = null; try { tried = sessionStorage.getItem('reloadFor'); } catch {}
+  if (!unsaved && tried !== String(live)) {   // nur einmal pro Version automatisch, falls das CDN noch Altes ausliefert
+    try { sessionStorage.setItem('reloadFor', String(live)); } catch {}
+    location.reload(); return;
+  }
+  $('update').hidden = false;   // ungespeicherte Änderungen nicht einfach wegwerfen
+}
+$('updateBtn').onclick = () => location.reload();
+addEventListener('pageshow', e => { if (e.persisted) checkUpdate(); });   // aus dem Zurück-Cache wiederhergestellt
 // Voreinstellung übernimmt den aktuellen Auszugszustand, gespeicherte/geteilte Varianten ihren eigenen
 function applyVariant(v) {
   const preset = v.kind === 'preset';
@@ -1093,4 +1118,5 @@ buildRoom(); setView('3d'); resize();
 loadItems(PRESETS[0].items);
 openFromHash();
 loadShared();
+checkUpdate();
 (function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); updateLabels(); })();
