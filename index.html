@@ -58,11 +58,16 @@
     </section>
 
     <section>
-      <h2>Varianten</h2>
+      <h2>Eigene Varianten (nur für mich sichtbar)</h2>
       <div class="vlist" id="vlist"></div>
       <div class="row" style="margin-top:8px">
         <input type="text" id="vname" placeholder="Name der neuen Variante" aria-label="Name der neuen Variante">
         <button class="btn primary" id="vsave">Aktuelle Anordnung speichern</button>
+        <button class="btn" id="vshare">Link teilen</button>
+      </div>
+      <div class="row vlinkrow" id="vlinkrow" hidden>
+        <input type="text" id="vlink" readonly aria-label="Link zur Variante">
+        <button class="btn" id="vlinkcopy">Kopieren</button>
       </div>
       <p class="note" id="vstore"></p>
     </section>

@@ -11,6 +11,7 @@ Interaktiver 3D-Möbelplaner fürs Wohnzimmer im EG (Three.js, kein Build-Schrit
 - Wände einzeln anklicken und streichen (Palette oder eigene Farbe); Wandfarben werden mit der Variante gespeichert
 - Pflanzen in 9 Arten (Busch, Monstera, Geigenfeige, Strelitzie, Kentiapalme, Olivenbaum, Bogenhanf, Säulenkaktus, Pampasgras)
 - Eigene Varianten werden im Browser gespeichert (localStorage)
+- Varianten als Link teilen: „Link teilen“ (aktuelle Anordnung) oder das Link-Symbol an einer gespeicherten Variante zeigt eine URL (und kopiert sie), in der die ganze Anordnung samt Wandfarben und Tischauszug steckt (komprimiert im `#v=…`-Hash, kein Server). Wer den Link öffnet, sieht die Variante und kann sie bei sich speichern.
 - Inspirations-Galerie als Vollbild-Lightbox: einfach Bilder in `inspiration/` legen und pushen (Dateien mit `fav` im Namen kommen zuerst). Die Bildliste kommt von der GitHub-API, lokal erscheinen neue Bilder also erst nach dem Push.
 
 ## Lokal starten

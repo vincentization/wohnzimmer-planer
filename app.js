@@ -873,21 +873,87 @@ function renderVariants() {
     b.querySelector('span span').textContent = v.name;
     b.querySelector('br + small').textContent = v.note || 'eigene Variante';
     if (!v.preset) {
+      const acts = document.createElement('span'); acts.className = 'acts';
+      const l = document.createElement('span'); l.className = 'x'; l.innerHTML = LINK_ICON; l.title = 'Link zu dieser Variante kopieren'; l.setAttribute('role', 'button');
+      l.onclick = ev => { ev.stopPropagation(); shareLink(v); };
       const x = document.createElement('span'); x.className = 'x'; x.textContent = '×'; x.title = 'Variante löschen'; x.setAttribute('role', 'button');
       x.onclick = ev => { ev.stopPropagation(); saved.splice(v.idx, 1); persist(); renderVariants(); };
-      b.appendChild(x);
+      acts.append(l, x); b.appendChild(acts);
     }
-    b.onclick = () => {
-      // Voreinstellung übernimmt den aktuellen Auszugszustand, gespeicherte Varianten ihren eigenen
-      if (!v.preset) { tableExt = !!v.ext; wallColors = { ...(v.walls || {}) }; }
-      selWall = null; paintWalls();
-      loadItems(v.items);
-      if (v.preset && tableExt) shiftEndChairs(0.8);
-      activeVariant = v.id; refresh();
-    };
+    b.onclick = () => { applyVariant(v); activeVariant = v.id; refresh(); };
     el.appendChild(b);
   }
 }
+// Voreinstellung übernimmt den aktuellen Auszugszustand, gespeicherte/geteilte Varianten ihren eigenen
+function applyVariant(v) {
+  if (!v.preset) { tableExt = !!v.ext; wallColors = { ...(v.walls || {}) }; }
+  selWall = null; paintWalls();
+  loadItems(v.items);
+  if (v.preset && tableExt) shiftEndChairs(0.8);
+}
+
+// ---------------------------------------------------------------- Varianten als Link teilen (#v=… im URL-Hash, nichts verlässt den Browser)
+const LINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>';
+const b64u = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+// Format: "z" + deflate (wo verfügbar) bzw. "j" + rohes JSON, jeweils base64url
+async function encodeVariant(v) {
+  const json = new TextEncoder().encode(JSON.stringify({ n: v.name, i: v.items, e: v.ext ? 1 : 0, w: v.walls || {} }));
+  if (typeof CompressionStream === 'function') { try { return 'z' + b64u(await pipe(json, new CompressionStream('deflate-raw'))); } catch {} }
+  return 'j' + b64u(json);
+}
+async function decodeVariant(s) {
+  const raw = unb64u(s.slice(1));
+  const json = s[0] === 'z' ? await pipe(raw, new DecompressionStream('deflate-raw')) : raw;
+  const d = JSON.parse(new TextDecoder().decode(json));
+  const num = n => typeof n === 'number' && isFinite(n);
+  const items = (Array.isArray(d.i) ? d.i : []).filter(p => p && TYPES[p.type] && num(p.x) && num(p.y) && (p.rot === undefined || num(p.rot)))
+    .map(({ type, x, y, rot, extSide, v, color }) => ({ type, x, y, rot: rot || 0,
+      ...(extSide === 1 || extSide === -1 ? { extSide } : {}), ...(typeof v === 'string' || num(v) ? { v } : {}),
+      ...(typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? { color } : {}) }));
+  if (!items.length) throw new Error('leer');
+  const walls = {};
+  for (const [k, c] of Object.entries(d.w || {})) if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) walls[k] = c;
+  return { name: String(d.n || 'Geteilte Variante').slice(0, 80), items, ext: !!d.e, walls };
+}
+async function copyLink(url, name) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(url); ok = true; } catch {}
+  if (!ok) { const f = $('vlink'); f.focus(); f.select(); try { ok = document.execCommand('copy'); } catch {} }
+  $('vlink').scrollLeft = 0;   // Anfang der Adresse zeigen
+  $('vstore').textContent = ok ? `Link zu „${name}“ kopiert – einfach verschicken.` : `Link zu „${name}“ – markiert, zum Kopieren ⌘C / Strg+C.`;
+}
+let linkName = '';
+async function shareLink(v) {
+  const url = location.href.split('#')[0] + '#v=' + await encodeVariant(v);
+  $('vlinkrow').hidden = false; $('vlink').value = url; linkName = v.name;
+  await copyLink(url, v.name);
+}
+$('vlink').onclick = $('vlink').onfocus = e => e.target.select();
+$('vlinkcopy').onclick = () => copyLink($('vlink').value, linkName);
+function currentName() {
+  const id = (activeVariant || '').replace(/^\*/, '');
+  const v = saved.find(s => s.id === id) || PRESETS.find(s => s.id === id) || (id === 'L' && sharedVariant);
+  const typed = $('vname').value.trim();
+  return typed || (v ? v.name + (activeVariant.startsWith('*') ? ' (geändert)' : '') : 'Geteilte Variante');
+}
+$('vshare').onclick = () => shareLink({ name: currentName(), items: snapshot(), ext: tableExt, walls: { ...wallColors } });
+
+let sharedVariant = null;
+async function openFromHash() {
+  const m = location.hash.match(/^#v=([zj][A-Za-z0-9_-]+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);   // Hash weg, damit Neuladen nach Änderungen nicht zurücksetzt
+  try {
+    sharedVariant = await decodeVariant(m[1]);
+    applyVariant(sharedVariant);
+    activeVariant = 'L'; $('vname').value = sharedVariant.name; refresh();
+    $('vstore').textContent = `Geöffnet über Link: „${sharedVariant.name}“. Zum Behalten „Aktuelle Anordnung speichern“.`;
+  } catch { $('vstore').textContent = 'Der Link enthält keine gültige Variante.'; }
+}
+addEventListener('hashchange', openFromHash);
+
 $('vsave').onclick = () => {
   const inp = $('vname'), id = 'S' + Date.now();
   saved.push({ id, name: inp.value.trim() || ('Variante ' + (saved.length + 1)),
@@ -938,4 +1004,5 @@ new ResizeObserver(resize).observe(stage);
 $('area').textContent = de(ROOM.area);
 buildRoom(); setView('3d'); resize();
 loadItems(PRESETS[0].items);
+openFromHash();
 (function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); updateLabels(); })();
